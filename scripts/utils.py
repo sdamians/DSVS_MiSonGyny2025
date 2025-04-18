@@ -19,7 +19,7 @@ def zip_folder(folder_path, output_filename):
     
     print(f"\n🎉 Carpeta comprimida como: {output_filename}")
 
-def calcular_metricas(y_true, y_pred, y_proba=None, promedio='binary'):
+def get_metrics(y_true, y_pred, y_proba=None, promedio='binary'):
     """
     Calcula métricas de clasificación: accuracy, precision, recall, f1 y roc_auc.
     
