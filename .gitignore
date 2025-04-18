@@ -176,3 +176,5 @@ cython_debug/
 # Datasets path
 datasets/
 config.env
+
+task1_mil_v1

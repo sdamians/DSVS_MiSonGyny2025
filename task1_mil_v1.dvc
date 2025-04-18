@@ -1,0 +1,5 @@
+outs:
+    - md5: 364c30a8a02247250d0f5d4e49b5ee1b.dir
+      size: 2278611
+      path: task1_mil_v1
+      nfiles: 3
