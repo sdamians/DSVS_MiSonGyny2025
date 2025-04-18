@@ -3,4 +3,4 @@ outs:
   size: 2278611
   nfiles: 3
   hash: md5
-  path: task1_mil_v1
+  path: datasets/task1_mil_v1
