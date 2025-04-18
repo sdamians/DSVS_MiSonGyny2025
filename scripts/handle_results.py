@@ -1,12 +1,9 @@
 import dagshub
 import mlflow
 import os
-from dotenv import load_dotenv
 
-load_dotenv("../config.env")
-
-def store_results(experiment_name: str, params: dict, metrics: dict):
-    dagshub.init(repo_owner=os.getenv("REPO_OWNER"), repo_name=("REPO_NAME"), mlflow=True)
+def store_results(experiment_name: str, params: dict, metrics: dict, repo_owner:str, repo_name:str):
+    dagshub.init(repo_owner=repo_owner, repo_name=repo_name, mlflow=True)
 
     if not mlflow.get_experiment_by_name(experiment_name):
         mlflow.create_experiment(experiment_name)
