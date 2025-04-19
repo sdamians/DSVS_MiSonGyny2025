@@ -23,6 +23,7 @@ class Learner:
     self.scheduler_params = scheduler_params
 
   def train(self, trainset: DataLoader, valset: DataLoader, n_epochs: int, gradient_accumulator_size: int=2):
+    batch_size = trainset.batch_size
     max_step_t = len(trainset)
 
     scheduler = t.optim.lr_scheduler.PolynomialLR(self.optimizer, **self.scheduler_params)
@@ -30,7 +31,7 @@ class Learner:
     total_loss = []
     total_lr = []
 
-    for epoch in tqdm(range(n_epochs), desc="Epoch: "):
+    for epoch in range(n_epochs):
       # We save the start time to see how long it takes.
       t0 = time.time()
 
@@ -41,16 +42,18 @@ class Learner:
       self.model.train()
       self.model.zero_grad()
 
-      for step, batch in enumerate(trainset):
+      for step, batch in tqdm(enumerate(trainset)):
         batch_loss = 0
 
         input_ids = batch["input_ids"].to(self.device)
         attention_mask = batch["attention_mask"].to(self.device)
         labels = batch["labels"].to(self.device)
-        
+        num_verses = batch["pad_len"]
+
         # Propagation forward in the layers
         outputs = self.model(input_ids,
-                        attention_mask=attention_mask)
+                        attention_mask=attention_mask,
+                             num_verses=num_verses)
 
         # We calculate the loss of the present minibatch
         loss = self.criterion(outputs, labels) #outputs[0]

@@ -45,9 +45,9 @@ class MILClassifier(nn.Module):
         self.fc = nn.Linear(self.llm.config.hidden_size, num_labels)
 
     def forward(self, input_ids, attention_mask, num_verses):
-        B, V, S, L = input_ids.shape # [batch d_verse seq_len, d_model]
-        input_ids = input_ids.view(-1, S, L) # [batch*d_verse seq_len d_model]
-        attention_mask = attention_mask.view(-1, S, L) # [batch*d_verse seq_len d_model]
+        B, V, S = input_ids.shape # [batch d_verse seq_len
+        input_ids = input_ids.view(-1, S) # [batch*d_verse seq_len]
+        attention_mask = attention_mask.view(-1, S) # [batch*d_verse seq_len]
 
         outputs = self.llm(input_ids=input_ids, attention_mask=attention_mask)        
         
