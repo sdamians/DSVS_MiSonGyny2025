@@ -67,7 +67,7 @@ class MILClassifier(nn.Module):
             logits = t.tensor(logits)
 
         elif self.pooling_type == 'attention':
-            weighted_embeddings = self.pooling(cls_embeddings, num_verses) # [ batch d_model ]
+            weighted_embeddings = self.pooling(cls_embeddings) # [ batch d_model ]
             logits = self.classifier(weighted_embeddings) # [batch num_classes]
         
         return logits
@@ -82,10 +82,11 @@ class AttentionPooling(nn.Module):
             nn.Linear(hidden_size, 1)
         )
 
-    def forward(self, H):  # H: (B, V, L)
+    def forward(self, H, num_verses):  # H: (B, V, L)
         # Compute attention weights
         attn_scores = self.attention(H)  # (B, V, 1)
+        attn_scores = attn_scores[:, :num_verses, :]
         attn_weights = t.softmax(attn_scores, dim=1)  # (B, V, 1)
-        weighted_sum = (H * attn_weights).sum(dim=1)  # (B, L)
+        weighted_sum = (H[:, :num_verses, :] * attn_weights).sum(dim=1)  # (B, L)
         
         return weighted_sum
