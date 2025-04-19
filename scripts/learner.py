@@ -122,9 +122,10 @@ class Learner:
         input_ids = batch["input_ids"].to(self.device)
         attention_mask = batch["attention_mask"].to(self.device)
         labels = batch["labels"] if "labels" in batch else None
-        
+        num_verses = batch["pad_len"]
+
         # [ batch  ]
-        outputs = self.model(input_ids, attention_mask=attention_mask)
+        outputs = self.model(input_ids, attention_mask=attention_mask, num_verses=num_verses)
         probs = t.softmax(outputs, dim=-1)  
         preds = t.argmax(probs, dim=1)
         probs = t.gather(probs, dim=-1, index=preds)

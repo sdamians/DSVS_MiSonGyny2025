@@ -57,14 +57,15 @@ class MILClassifier(nn.Module):
         # MIL pooling: max over all instances (versos)
         if self.pooling_type == 'max':
             bag_logits = self.fc(cls_embeddings) # [batch d_verse num_classes]
-
-            songs = t.unbind(bag_logits) # [d_verse num_classes]
             
-            logits = []
-            for idx, verses in enumerate(songs):
-                logits.append(verses[: num_verses[idx].item()].max(dim=-1).values) # [num_classes]
+            # songs = t.unbind(bag_logits)
+            # logits = []
+            # for idx, verses in enumerate(songs):
+            #     logits.append(verses[: num_verses[idx]].max(dim=0).values) # [num_classes]
+            #     print(logits)
+            # logits = t.tensor(logits)
 
-            logits = t.tensor(logits)
+            logits = t.max(bag_logits, dim=1).values # [batch num_classes]
 
         elif self.pooling_type == 'attention':
             weighted_embeddings = self.pooling(cls_embeddings) # [ batch d_model ]
