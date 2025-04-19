@@ -30,7 +30,7 @@ params = {
     },
     "tokenizer":{
         "max_length": 128,
-        "padding": True,
+        "padding": 'max_length',
         "truncation": True
     }
 }
