@@ -11,28 +11,21 @@ from utils import format_time
 from utils import get_metrics
 
 class Learner:
-  def __init__(self, classifier, class_weights: Tensor, device="cpu"):
+  def __init__(self, classifier, class_weights: Tensor, optimizer_params: dict, criterion_params: dict, scheduler_params: dict,  device="cpu"):
     self.model = classifier
 
-    self.optimizer = t.optim.Adam(self.model.parameters()
-                                ,lr=1e-5
-                                ,eps=1e-8
-                                ,weight_decay=0.01
-                                ,betas=(0.9, 0.999) # 0.9, 0.999
-                                ,amsgrad=False)
+    self.optimizer = t.optim.Adam(self.model.parameters(), **optimizer_params)
 
-    self.criterion = nn.CrossEntropyLoss(weight=class_weights # torch.tensor([5.8, 0.43, 2]).to(device)
-                                        ,reduction='sum' #sum, mean
-                                        ,label_smoothing=0)
+    self.criterion = nn.CrossEntropyLoss(weight=class_weights, **criterion_params)
 
     self.device = device
+
+    self.scheduler_params = scheduler_params
 
   def train(self, trainset: DataLoader, valset: DataLoader, n_epochs: int, gradient_accumulator_size: int=2):
     max_step_t = len(trainset)
 
-    scheduler = t.optim.lr_scheduler.PolynomialLR(self.optimizer
-                                                      ,total_iters=n_epochs
-                                                      ,power=1.0)
+    scheduler = t.optim.lr_scheduler.PolynomialLR(self.optimizer, **self.scheduler_params)
 
     total_loss = []
     total_lr = []
