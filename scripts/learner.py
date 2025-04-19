@@ -6,19 +6,13 @@ import gc
 
 from torch import Tensor
 from torch.utils.data import DataLoader
-from scripts.classifiers import TextClassifier
-from datasets import Dataset
 from tqdm import tqdm
 from utils import format_time
 from utils import get_metrics
 
 class Learner:
-  def __init__(self, model_path, class_weights: Tensor, device="cpu"):
-    self.model = TextClassifier(model_path, 
-                                num_labels=2, 
-                                get_att=False, 
-                                get_hs=False, 
-                                dropout=0.1)
+  def __init__(self, classifier, class_weights: Tensor, device="cpu"):
+    self.model = classifier
 
     self.optimizer = t.optim.Adam(self.model.parameters()
                                 ,lr=1e-5

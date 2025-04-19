@@ -42,24 +42,33 @@ class MILClassifier(nn.Module):
             self.pooling = AttentionPooling(self.llm.config.hidden_size)
 
         self.dropout = nn.Dropout(dropout)
-        self.fc = nn.Linear(self.llm.config.hidden_size, 1)
+        self.fc = nn.Linear(self.llm.config.hidden_size, num_labels)
 
-    def forward(self, input_ids, attention_mask):
-        B, T, L = input_ids.shape # [batch seq_length, d_model]
-        input_ids = input_ids.view(-1, L)
-        attention_mask = attention_mask.view(-1, L)
+    def forward(self, input_ids, attention_mask, num_verses):
+        B, V, S, L = input_ids.shape # [batch d_verse seq_len, d_model]
+        input_ids = input_ids.view(-1, S, L) # [batch*d_verse seq_len d_model]
+        attention_mask = attention_mask.view(-1, S, L) # [batch*d_verse seq_len d_model]
 
-        outputs = self.llm(input_ids=input_ids, attention_mask=attention_mask)
-        cls_embeddings = outputs.last_hidden_state[:, 0, :]  # CLS token
-        cls_embeddings = cls_embeddings.view(B, T, -1)
+        outputs = self.llm(input_ids=input_ids, attention_mask=attention_mask)        
         
+        cls_embeddings = outputs.last_hidden_state[:, 0, :]  # CLS token = [ batch*d_verse 1 d_model ]
+        cls_embeddings = cls_embeddings.view(B, V, -1) # [batch d_verse d_model]
+        
+        # MIL pooling: max over all instances (versos)
         if self.pooling_type == 'max':
-            # MIL pooling: max over all instances (versos)
-            bag_logits = cls_embeddings.max(dim=1).values
+            bag_logits = self.classifier(cls_embeddings) # [batch d_verse num_classes]
+
+            songs = t.unbind(bag_logits) # [d_verse num_classes]
+            
+            logits = []
+            for idx, verses in enumerate(songs):
+                logits.append(verses[: num_verses[idx]].max(dim=-1).values) # [num_classes]
+
+            logits = t.tensor(logits)
+
         elif self.pooling_type == 'attention':
-            bag_logits = self.pooling(cls_embeddings)
-        
-        logits = self.classifier(bag_logits)
+            weighted_embeddings = self.pooling(cls_embeddings, num_verses) # [ batch d_model ]
+            logits = self.classifier(weighted_embeddings) # [batch num_classes]
         
         return logits
     
@@ -73,9 +82,10 @@ class AttentionPooling(nn.Module):
             nn.Linear(hidden_size, 1)
         )
 
-    def forward(self, H):  # H: (B, T, H)
+    def forward(self, H):  # H: (B, V, L)
         # Compute attention weights
-        attn_scores = self.attention(H)  # (B, T, 1)
-        attn_weights = t.softmax(attn_scores, dim=1)  # (B, T, 1)
-        weighted_sum = (H * attn_weights).sum(dim=1)  # (B, H)
+        attn_scores = self.attention(H)  # (B, V, 1)
+        attn_weights = t.softmax(attn_scores, dim=1)  # (B, V, 1)
+        weighted_sum = (H * attn_weights).sum(dim=1)  # (B, L)
+        
         return weighted_sum
