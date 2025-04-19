@@ -34,7 +34,7 @@ class MILClassifier(nn.Module):
         self.pooling_type = pooling_type
 
         self.llm = AutoModel.from_pretrained(modelpath
-                                            ,num_labels=num_labels
+                                             ,num_labels=num_labels
                                             ,output_attentions=get_att
                                             ,output_hidden_states=get_hs)
         
@@ -62,7 +62,7 @@ class MILClassifier(nn.Module):
             
             logits = []
             for idx, verses in enumerate(songs):
-                logits.append(verses[: num_verses[idx]].max(dim=-1).values) # [num_classes]
+                logits.append(verses[: num_verses[idx].item()].max(dim=-1).values) # [num_classes]
 
             logits = t.tensor(logits)
 
