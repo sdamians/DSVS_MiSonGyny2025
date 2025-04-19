@@ -86,8 +86,8 @@ class Learner:
         t.cuda.empty_cache()
         gc.collect()
 
-        #if (step % (step  // 10) == 0) or (step == max_step_t - 1):
-        print(f"Batch {step}/{max_step_t} avg loss: {np.sum(epoch_loss) / (step+1):.5f}")
+        if (step % 50 == 0) or (step == max_step_t - 1):
+          print(f"Batch {step}/{max_step_t} avg loss: {np.sum(epoch_loss) / (step+1):.5f}")
 
       #Update learning rate each end of epoch
       scheduler.step()
