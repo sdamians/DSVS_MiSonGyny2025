@@ -2,6 +2,7 @@ params = {
     "experiment_name": "SLM_binary_task_1",
     "dataset_version": "",
     "seed": 43,
+    "max_verses": 20,
     "model": {
         "name": "bert_base_cased",
         "num_labels": 2,
@@ -12,14 +13,13 @@ params = {
         "batch_size": 10,
         "gradient_accumulator_size": 2,
         "optimizer": {
-            "learning_rate": 1e-5,
+            "lr": 1e-5,
             "eps": 1e-8,
             "weight_decay": 0.01,
             "betas": (0.9, 0.999),
             "amsgrad": False
         },
         "criterion": {
-            "weight": None,
             "reduction": "sum", #mean
             "label_smoothing": 0    
         },    
@@ -29,8 +29,8 @@ params = {
         }
     },
     "tokenizer":{
-        "max_length": 512,
-        "padding": "max_length",
+        "max_length": 128,
+        "padding": True,
         "truncation": True
     }
 }
