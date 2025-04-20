@@ -10,7 +10,7 @@ params = {
     },
     "train": {
         "epochs": 5,
-        "batch_size": 10,
+        "batch_size": 5,
         "gradient_accumulator_size": 2,
         "optimizer": {
             "lr": 1e-5,

@@ -56,6 +56,7 @@ class MILClassifier(nn.Module):
         
         # MIL pooling: max over all instances (versos)
         if self.pooling_type == 'max':
+            cls_embeddings = self.dropout(cls_embeddings)
             bag_logits = self.fc(cls_embeddings) # [batch d_verse num_classes]
             
             # songs = t.unbind(bag_logits)
@@ -69,6 +70,7 @@ class MILClassifier(nn.Module):
 
         elif self.pooling_type == 'attention':
             weighted_embeddings = self.pooling(cls_embeddings) # [ batch d_model ]
+            cls_embeddings = self.dropout(weighted_embeddings)
             logits = self.fc(weighted_embeddings) # [batch num_classes]
         
         return logits
