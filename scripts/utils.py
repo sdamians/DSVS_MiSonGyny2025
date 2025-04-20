@@ -41,7 +41,7 @@ def get_metrics(y_true, y_pred, y_proba=None, promedio='binary'):
 
     if y_proba is not None:
         try:
-            metricas["roc_auc"] = roc_auc_score(y_true, y_proba, average=promedio, multi_class='ovr')
+            metricas["roc_auc"] = roc_auc_score(y_true, y_proba, average='macro') #, multi_class='ovr')
         except:
             metricas["roc_auc"] = "No calculado (revisar formato de y_proba)"
     else:

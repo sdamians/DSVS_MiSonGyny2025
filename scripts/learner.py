@@ -65,7 +65,7 @@ class Learner:
 
         # So we can implement gradient accumulator technique
         if (step > 0 and step % gradient_accumulator_size == 0) or (step == max_step_t - 1):
-          
+
           #(this prevents the gradient from becoming explosive)
           t.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
 
@@ -82,12 +82,13 @@ class Learner:
         del input_ids
         del attention_mask
         del labels
-        
+
         t.cuda.empty_cache()
         gc.collect()
 
         if (step % 50 == 0) or (step == max_step_t - 1):
           print(f"Batch {step}/{max_step_t} avg loss: {np.sum(epoch_loss) / (step+1):.5f}")
+        break
 
       #Update learning rate each end of epoch
       scheduler.step()
@@ -118,36 +119,45 @@ class Learner:
 
     with t.no_grad():
       for batch in testset:
-        
+
         input_ids = batch["input_ids"].to(self.device)
         attention_mask = batch["attention_mask"].to(self.device)
-        labels = batch["labels"] if "labels" in batch else None
+        labels = batch["labels"].to(self.device) if "labels" in batch else None
         num_verses = batch["pad_len"]
 
         # [ batch  ]
         outputs = self.model(input_ids, attention_mask=attention_mask, num_verses=num_verses)
-        probs = t.softmax(outputs, dim=-1)  
-        preds = t.argmax(probs, dim=1)
-        probs = t.gather(probs, dim=-1, index=preds)
+        probs = t.softmax(outputs, dim=-1) # [batch n_classes]
+        preds = t.argmax(probs, dim=1).unsqueeze(-1) # [batch 1]
 
-        all_probs.append(probs)
-        all_preds.append(preds)
+        #probs = t.gather(probs, dim=-1, index=preds)
+
+        all_probs.extend(probs.cpu().numpy())
+        all_preds.extend(preds.cpu().numpy())
 
         if labels is not None:
-          all_labels.append(labels)
+          all_labels.extend(labels.cpu().numpy())
           loss = self.criterion(outputs, labels)
           eval_loss += loss
-    
-    all_preds = t.cat(all_preds, dim=0)
-    all_probs = t.cat(all_probs, dim=0)
+
+    #all_preds = t.tensor(all_preds)
+    #all_probs = t.tensor(all_probs)
 
     # We show the final accuracy for this epoch
     if labels is not None:
-      all_labels = t.cat(all_labels, dim=0)
-      metrics = get_metrics(all_labels, all_preds, all_probs, promedio='binary')
+      all_probs = np.array(all_probs)
+      all_preds = np.array(all_preds).flatten()
+      all_labels = np.array(all_labels).flatten()
+      
+      print(f"probs: {all_probs[:,1]} {len(all_probs[:,1])}")
+      print(f"preds: {all_preds} {len(all_preds)}")
+      print(f"label: {all_labels} {len(all_labels)}")
+
+      metrics = get_metrics(all_labels, all_preds, all_probs[:, 1], promedio='binary')
+
       for key in metrics:
         print(f"\n\t{key}: {metrics[key]}")
       print(f"\n\tEvalLoss: {eval_loss}")
     print(f"\tValidation took: {format_time(time.time() - t0)}")
-    
+
     return all_preds, all_probs, all_labels, eval_loss
