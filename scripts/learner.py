@@ -149,9 +149,9 @@ class Learner:
       all_preds = np.array(all_preds).flatten()
       all_labels = np.array(all_labels).flatten()
       
-      print(f"probs: {all_probs[:,1]} {len(all_probs[:,1])}")
-      print(f"preds: {all_preds} {len(all_preds)}")
-      print(f"label: {all_labels} {len(all_labels)}")
+      #print(f"probs: {all_probs[:,1]} {len(all_probs[:,1])}")
+      #print(f"preds: {all_preds} {len(all_preds)}")
+      #print(f"label: {all_labels} {len(all_labels)}")
 
       metrics = get_metrics(all_labels, all_preds, all_probs[:, 1], promedio='binary')
 
