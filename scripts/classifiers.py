@@ -85,11 +85,11 @@ class AttentionPooling(nn.Module):
             nn.Linear(hidden_size, 1)
         )
 
-    def forward(self, H, num_verses):  # H: (B, V, L)
+    def forward(self, H):  # H: (B, V, L)
         # Compute attention weights
         attn_scores = self.attention(H)  # (B, V, 1)
-        attn_scores = attn_scores[:, :num_verses, :]
+        #attn_scores = attn_scores[:, :num_verses, :]
         attn_weights = t.softmax(attn_scores, dim=1)  # (B, V, 1)
-        weighted_sum = (H[:, :num_verses, :] * attn_weights).sum(dim=1)  # (B, L)
+        weighted_sum = (H * attn_weights).sum(dim=1)  # (B, L)
         
         return weighted_sum
