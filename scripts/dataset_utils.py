@@ -31,13 +31,13 @@ class MiSonGynyDataset(Dataset):
             "id": self.ids[idx]
         }
 
-def split_songs_into_verses(song_list, chunk_size=4):
+def split_songs_into_verses(song_list, verse_size=4, num_verses=20):
     """
     1. Get all sentences per song
     2. Clean each sentence by removing 'as low as', sentences with a single token, parenthesis, and squared brackets 
     3. Remove repeated sentences (chorus, and so on)
     4. Split them by chunks (according to chunk size)
-    5. Get only first 20 chunks per song maximum
+    5. Get only first k chunks per song maximum
     """
     songs = []
 
@@ -49,9 +49,9 @@ def split_songs_into_verses(song_list, chunk_size=4):
         sentences = [ s for s in sentences if 'as low as $' not in s and ' ' in s and len(s.strip()) >= 1 ]
         sentences = list(dict.fromkeys(sentences))
         
-        verses = [ " ".join(sentences[i:i + chunk_size]).strip() for i in range(0, len(sentences), chunk_size)]
+        verses = [ " ".join(sentences[i:i + verse_size]).strip() for i in range(0, len(sentences), verse_size)]
         verses = [ clean_sentence(v) for v in verses if len(v) > 0 ]
-        songs.append(verses[:20])
+        songs.append(verses[:num_verses])
 
     return songs
 

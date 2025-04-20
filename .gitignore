@@ -177,3 +177,4 @@ cython_debug/
 datasets/*
 !datasets/*.dvc
 config.env
+*.bkp.py
