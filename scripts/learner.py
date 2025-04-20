@@ -88,7 +88,7 @@ class Learner:
 
         if (step % 50 == 0) or (step == max_step_t - 1):
           print(f"Batch {step}/{max_step_t} avg loss: {np.sum(epoch_loss) / (step+1):.5f}")
-        break
+        
 
       #Update learning rate each end of epoch
       scheduler.step()
