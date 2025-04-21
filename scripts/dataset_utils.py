@@ -31,7 +31,9 @@ class MiSonGynyDataset(Dataset):
             "id": self.ids[idx]
         }
 
-def split_songs_into_verses(song_list, verse_size=4, num_verses=20, sentence_split_token=" "):
+import re 
+
+def split_songs_into_verses(song_list, verse_size=1, num_verses=20, sentence_split_token=" "):
     """
     1. Get all sentences per song
     2. Clean each sentence by removing 'as low as', sentences with a single token, parenthesis, and squared brackets 
@@ -44,17 +46,18 @@ def split_songs_into_verses(song_list, verse_size=4, num_verses=20, sentence_spl
     songs = []
 
     for idx, song in enumerate(song_list):
-        sentences = re.sub(r'(?<=[a-z])(?=[A-Z])', '\n', song)
-        sentences = sentences.split("\n")
+        sentences = song.split("\n")
 
         sentences = [ clean_sentence(s) for s in sentences ]
         sentences = [ s for s in sentences if 'as low as $' not in s and ' ' in s and len(s.strip()) >= 1 ]
+        
         # Get only the unique sentences preserving the order of appareance
-        sentences = list(dict.fromkeys(sentences))
+        sentences = get_most_repeated_sentences(sentences)
+        sentences = [ s[0] for s in sentences ]
         
         if len(sentences) > verse_size:
             verses = [ sentence_split_token.join(sentences[i:i + verse_size]).strip() for i in range(0, len(sentences), verse_size)]
-            verses = [ clean_sentence(v) for v in verses if len(v) > 0 ]
+            verses = [ clean_sentence(v) for v in verses if len(clean_sentence(v)) > 0 ]
             songs.append(verses[:num_verses])
         else:
             verses = [ sentence.strip() for sentence in sentences ]
@@ -62,11 +65,25 @@ def split_songs_into_verses(song_list, verse_size=4, num_verses=20, sentence_spl
 
     return songs
 
+def get_most_repeated_sentences(sentences_list):
+    results = {}
+    for sentence in sentences_list:
+        if sentence not in results:
+            results[sentence] = 0
+        results[sentence] += 1
+
+    sorted_results = sorted(results.items(), key=lambda x:x[1], reverse=True)
+
+    return sorted_results
+
 def clean_sentence(sentence):
     """
     Remove brackets, parenthesis and extra spaces
     """
     sentence = re.sub(r'\[.*\]', '', sentence)
     sentence = re.sub(r'\(.*\)', '', sentence)
+    # Delete camel case
+    sentence = re.sub(r'(?<=[a-z])(?=[A-Z])', ' ', sentence)
+    sentence = re.sub(r'\,', ', ', sentence)
     sentence = re.sub(r'\s+', ' ', sentence)
     return sentence.strip()
