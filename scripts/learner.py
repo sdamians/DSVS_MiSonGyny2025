@@ -48,12 +48,14 @@ class Learner:
         input_ids = batch["input_ids"].to(self.device)
         attention_mask = batch["attention_mask"].to(self.device)
         labels = batch["labels"].to(self.device)
-        num_verses = batch["pad_len"]
+        if "pad_len" in batch:
+          num_verses = batch["pad_len"]
 
         # Propagation forward in the layers
-        outputs = self.model(input_ids,
-                        attention_mask=attention_mask,
-                             num_verses=num_verses)
+        if "pad_len" in batch:
+          outputs = self.model(input_ids, attention_mask=attention_mask, num_verses=num_verses)
+        else:
+          outputs = self.model(input_ids, attention_mask=attention_mask)
 
         # We calculate the loss of the present minibatch
         loss = self.criterion(outputs, labels) #outputs[0]
@@ -123,10 +125,15 @@ class Learner:
         input_ids = batch["input_ids"].to(self.device)
         attention_mask = batch["attention_mask"].to(self.device)
         labels = batch["labels"].to(self.device) if "labels" in batch else None
-        num_verses = batch["pad_len"]
+        if "pad_len" in batch:
+          num_verses = batch["pad_len"]
 
         # [ batch  ]
-        outputs = self.model(input_ids, attention_mask=attention_mask, num_verses=num_verses)
+        if "pad_len" in batch:
+          outputs = self.model(input_ids, attention_mask=attention_mask, num_verses=num_verses)
+        else:
+          outputs = self.model(input_ids, attention_mask=attention_mask)
+
         probs = t.softmax(outputs, dim=-1) # [batch n_classes]
         preds = t.argmax(probs, dim=1).unsqueeze(-1) # [batch 1]
 

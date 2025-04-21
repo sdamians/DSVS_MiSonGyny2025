@@ -38,6 +38,8 @@ def split_songs_into_verses(song_list, verse_size=4, num_verses=20):
     3. Remove repeated sentences (chorus, and so on)
     4. Split them by chunks (according to chunk size)
     5. Get only first k chunks per song maximum
+
+    if verse_size is greater than the actual number of sentences, it will be ignored
     """
     songs = []
 
@@ -47,11 +49,16 @@ def split_songs_into_verses(song_list, verse_size=4, num_verses=20):
 
         sentences = [ clean_sentence(s) for s in sentences ]
         sentences = [ s for s in sentences if 'as low as $' not in s and ' ' in s and len(s.strip()) >= 1 ]
+        # Get only the unique sentences preserving the order of appareance
         sentences = list(dict.fromkeys(sentences))
         
-        verses = [ " ".join(sentences[i:i + verse_size]).strip() for i in range(0, len(sentences), verse_size)]
-        verses = [ clean_sentence(v) for v in verses if len(v) > 0 ]
-        songs.append(verses[:num_verses])
+        if len(sentences) > num_verses:
+            verses = [ " ".join(sentences[i:i + verse_size]).strip() for i in range(0, len(sentences), verse_size)]
+            verses = [ clean_sentence(v) for v in verses if len(v) > 0 ]
+            songs.append(verses[:num_verses])
+        else:
+            verses = [ sentence.strip() for sentence in sentences ]
+            songs.append(verses[:num_verses])
 
     return songs
 
