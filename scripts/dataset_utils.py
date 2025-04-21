@@ -31,7 +31,7 @@ class MiSonGynyDataset(Dataset):
             "id": self.ids[idx]
         }
 
-def split_songs_into_verses(song_list, verse_size=4, num_verses=20):
+def split_songs_into_verses(song_list, verse_size=4, num_verses=20, sentence_split_token=" "):
     """
     1. Get all sentences per song
     2. Clean each sentence by removing 'as low as', sentences with a single token, parenthesis, and squared brackets 
@@ -53,7 +53,7 @@ def split_songs_into_verses(song_list, verse_size=4, num_verses=20):
         sentences = list(dict.fromkeys(sentences))
         
         if len(sentences) > verse_size:
-            verses = [ " ".join(sentences[i:i + verse_size]).strip() for i in range(0, len(sentences), verse_size)]
+            verses = [ sentence_split_token.join(sentences[i:i + verse_size]).strip() for i in range(0, len(sentences), verse_size)]
             verses = [ clean_sentence(v) for v in verses if len(v) > 0 ]
             songs.append(verses[:num_verses])
         else:
