@@ -52,7 +52,7 @@ def split_songs_into_verses(song_list, verse_size=4, num_verses=20):
         # Get only the unique sentences preserving the order of appareance
         sentences = list(dict.fromkeys(sentences))
         
-        if len(sentences) > num_verses:
+        if len(sentences) > verse_size:
             verses = [ " ".join(sentences[i:i + verse_size]).strip() for i in range(0, len(sentences), verse_size)]
             verses = [ clean_sentence(v) for v in verses if len(v) > 0 ]
             songs.append(verses[:num_verses])
