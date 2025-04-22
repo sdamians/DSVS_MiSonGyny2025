@@ -119,7 +119,7 @@ class MILClassifier(nn.Module):
             logits = t.max(bag_logits, dim=1).values # [batch num_classes]
 
         elif self.pooling_type == 'attention':
-            weighted_embeddings = self.pooling(cls_embeddings) # [ batch d_model ]
+            weighted_embeddings = self.pooling(cls_embeddings, num_verses) # [ batch d_model ]
             cls_embeddings = self.dropout(weighted_embeddings)
             logits = self.fc(weighted_embeddings) # [batch num_classes]
         
@@ -130,16 +130,23 @@ class AttentionPooling(nn.Module):
     def __init__(self, hidden_size):
         super().__init__()
         self.attention = nn.Sequential(
-            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size * 2),
             nn.Tanh(),
-            nn.Linear(hidden_size, 1)
+            nn.Linear(hidden_size * 2, 1)
         )
 
-    def forward(self, H):  # H: (B, V, L)
-        # Compute attention weights
-        attn_scores = self.attention(H)  # (B, V, 1)
-        #attn_scores = attn_scores[:, :num_verses, :]
-        attn_weights = t.softmax(attn_scores, dim=1)  # (B, V, 1)
-        weighted_sum = (H * attn_weights).sum(dim=1)  # (B, L)
+    def forward(self, H, num_verses):  # H: (B, V, L)
+        batches = H.unbind(dim=0) # (V, L)
+        weighted_results = []
+
+        for idx, verses in enumerate(batches):
+            verses = verses[:num_verses[idx]]
+            print(f"verses: {verses.shape}")
+            # Compute attention weights
+            attn_scores = self.attention(verses)  # (V, 1)
         
-        return weighted_sum
+            attn_weights = t.softmax(attn_scores, dim=0)  # (V, 1)
+            print(f"attn weights: {attn_weights.shape}")
+            weighted_results.append((verses * attn_weights).sum(dim=0))  # (V, L)
+
+        return t.stack(weighted_results, dim=0)
