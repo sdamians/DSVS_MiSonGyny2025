@@ -33,7 +33,7 @@ class MiSonGynyDataset(Dataset):
 
 import re 
 
-def split_songs_into_verses(song_list, verse_size=1, num_verses=20, sentence_split_token=" "):
+def split_songs_into_verses(song_list, window_size=4, num_verses=20, sentence_split_token=" "):
     """
     1. Get all sentences per song
     2. Clean each sentence by removing 'as low as', sentences with a single token, parenthesis, and squared brackets 
@@ -41,7 +41,7 @@ def split_songs_into_verses(song_list, verse_size=1, num_verses=20, sentence_spl
     4. Split them by chunks (according to chunk size)
     5. Get only first k chunks per song maximum
 
-    if verse_size is greater than the actual number of sentences, it will be ignored
+    if window_size is greater than the actual number of sentences, it will be ignored
     """
     songs = []
 
@@ -51,18 +51,9 @@ def split_songs_into_verses(song_list, verse_size=1, num_verses=20, sentence_spl
         sentences = [ clean_sentence(s) for s in sentences ]
         sentences = [ s for s in sentences if 'as low as $' not in s and ' ' in s and len(s.strip()) >= 1 ]
         
-        # Get only the unique sentences preserving the order of appareance
-        sentences = get_most_repeated_sentences(sentences)
-        sentences = [ s[0] for s in sentences ]
+        verses = [ sentence_split_token.join(sentences[i:i + window_size]).strip() for i in range(0, len(sentences) - window_size) ]
+        songs.append(verses[:num_verses])
         
-        if len(sentences) > verse_size:
-            verses = [ sentence_split_token.join(sentences[i:i + verse_size]).strip() for i in range(0, len(sentences), verse_size)]
-            verses = [ clean_sentence(v) for v in verses if len(clean_sentence(v)) > 0 ]
-            songs.append(verses[:num_verses])
-        else:
-            verses = [ sentence.strip() for sentence in sentences ]
-            songs.append(verses[:num_verses])
-
     return songs
 
 def get_most_repeated_sentences(sentences_list):
