@@ -141,12 +141,12 @@ class AttentionPooling(nn.Module):
 
         for idx, verses in enumerate(batches):
             verses = verses[:num_verses[idx]]
-            print(f"verses: {verses.shape}")
+            
             # Compute attention weights
             attn_scores = self.attention(verses)  # (V, 1)
         
             attn_weights = t.softmax(attn_scores, dim=0)  # (V, 1)
-            print(f"attn weights: {attn_weights.shape}")
+            
             weighted_results.append((verses * attn_weights).sum(dim=0))  # (V, L)
 
         return t.stack(weighted_results, dim=0)
