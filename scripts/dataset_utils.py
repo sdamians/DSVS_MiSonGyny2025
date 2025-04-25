@@ -1,128 +1,101 @@
 import re
 import torch as t
+import unicodedata
 from datasets import Dataset
 
-#Multiple instance learning
-class MiSonGynyDataset(Dataset):
-    def __init__(self, songs, labels, ids, tokenizer, tokenizer_params: dict):
-        self.songs = songs
-        self.labels = labels
-        self.tokenizer = tokenizer
-        self.ids = ids
-        self.tokenizer_params = tokenizer_params
-
-    def __len__(self):
-        return len(self.songs)
-
-    def __getitem__(self, idx):
-        versos = self.songs[idx]
-        label = self.labels[idx]
-
-        inputs = self.tokenizer(
-            versos,
-            return_tensors="pt",
-            **self.tokenizer_params
-        )
-
-        return {
-            "input_ids": inputs["input_ids"],
-            "attention_mask": inputs["attention_mask"],
-            "label": t.tensor(label, dtype=t.float),
-            "id": self.ids[idx]
-        }
-
-import re 
 
 def split_songs_into_verses(song_list, window_size=4, num_verses=20, offset=2, sentence_split_token=" "):
-    """
-    1. Get all sentences per song
-    2. Clean each sentence by removing 'as low as', sentences with a single token, parenthesis, and squared brackets 
-    3. Remove repeated sentences (chorus, and so on)
-    4. Split them by chunks (according to chunk size)
-    5. Get only first k chunks per song maximum
-
-    if window_size is greater than the actual number of sentences, it will be ignored
-    """
+    
     songs = []
 
-    con_dict = get_contractions_dict(song_list)
-
     for song in song_list:
-        sentences = song.split("\n")
+        # 1. Separar oraciones
+        #    Si cada canción solo tiene una oración, separarla por cada que se encuentre una mayúscula
+        sentences = split_into_sentences(song)
 
-        sentences = [ clean_sentence(s) for s in sentences ]
-        sentences = [ s for s in sentences if 'as low as $' not in s and 'coro' != s and len(s.strip().split(' ')) > 1 ]
-        sentences = [ clean_contractions(s, con_dict) for s in sentences ]
-        sentences = list(dict.fromkeys(sentences))
+        # 2. Eliminar oraciones 
+        #    Que tienen [], (), Verse, BREAK, verso, break, as low as $, o vacías
+        sentences = clean_sentences(sentences)
 
-        verses = [ sentence_split_token.join(sentences[i:i + window_size]).strip() for i in range(0, len(sentences), offset) ]
-        songs.append(verses[:num_verses])
+        # 3. Limpieza de caracteres
+        sentences = [ clean_characters(sentence) for sentence in sentences]
+        #   Limpieza a nivel palabra
+        sentences = [ clean_words(sentence) for sentence in sentences ]
+        #   Se añaden oraciones únicas
+        songs.append(list(dict.fromkeys(sentences)))
+
+    # 4. Limpieza de contracciones
+    contractions = get_contractions_dict(songs)
+    new_songs = []
+
+    for sentences in songs:
+        new_sentences = []
+        for sentence in sentences:
+            new_sentence = clean_contractions(sentence, contractions)
+            new_sentence = remove_sentences_with_contractions(new_sentence)
+            new_sentences.append(new_sentence)
+
+        verses = [ sentence_split_token.join(new_sentences[i:i + window_size]).strip() for i in range(0, len(new_sentences), offset) ]
+        new_songs.append(verses[:num_verses])
         
-    return songs
+    return new_songs
 
-def get_most_repeated_sentences(sentences_list):
-    results = {}
-    for sentence in sentences_list:
-        if sentence not in results:
-            results[sentence] = 0
-        results[sentence] += 1
 
-    sorted_results = sorted(results.items(), key=lambda x:x[1], reverse=True)
-
-    return sorted_results
-
-def clean_sentence(sentence):
-    """
-    Remove brackets, parenthesis and extra spaces
-    """
-    sentence = re.sub(r'\[.*\]', '', sentence)
-    sentence = re.sub(r'\(.*\)', '', sentence)
+def split_into_sentences(song):
+    # Camel case split
+    song = re.sub(r'(?<=[a-z])(?=[A-Z])', ' ', song)
     
+    sentences = song.split("\n")
+    if len(sentences) < 5:
+        new_sentences = []
+        for sentence in sentences:
+            sentence = re.split(r'(?=[A-Z])', sentence)
+            new_sentences.extend(sentence)
+        return new_sentences
+    return sentences
 
-    # Delete camel case
-    sentence = re.sub(r'(?<=[a-z])(?=[A-Z])', ' ', sentence)
+def clean_sentences(sentences):
+    pattern = r'as low as \$|\[.*\]|\(.*\)|{.*}|{.*]|\bBREAK|\bVerse|\bBridge|\bCORO|\bVerso'
+
+    sentences = [sentence for sentence in sentences 
+                 if not re.search(pattern=pattern, string=sentence, flags=re.IGNORECASE)
+                 and ' ' in sentence]
+
+    foreign_char = r"[âãäçêëûüāœ]"
+
+    sentences = [sentence for sentence in sentences
+                 if not re.search(pattern=foreign_char, string=sentence)]    
     
+    return sentences
+
+def clean_characters(sentence):
+    sentence = re.sub(r'[\]\)\*“”\"#$%/@\[\(°=&:;]', '', sentence)
+    sentence = re.sub(r'\.+', " ", sentence)
+    sentence = re.sub(r"''", "", sentence)
+    sentence = re.sub(r"\xad|\x81|…|_|\u200b", " ", sentence)
     sentence = re.sub(r'\,', ', ', sentence)
     sentence = re.sub(r' \,', ',', sentence)
-    sentence = re.sub(r'\.+', '', sentence)
-
-    sentence = re.sub(r"\xad|\x81|…|_|\u200b", " ", sentence)
-    sentence = re.sub(r"б", "á", sentence)
-    sentence = re.sub(r"н", "í", sentence)
-    sentence = re.sub(r"ъ", "ú", sentence)
-    sentence = re.sub(r"у", "ó", sentence)
-    sentence = re.sub(r"с", "ñ", sentence)
-    sentence = re.sub(r"е", "e", sentence)
-
-    sentence = re.sub(r"Ã", "Á", sentence)
-    sentence = re.sub(r"Ã¡", "á", sentence)
-    sentence = re.sub(r"Ã‰", "É", sentence)
-    sentence = re.sub(r"Ã©", "é", sentence)
-    sentence = re.sub(r"Ã", "Í", sentence)
-    sentence = re.sub(r"Ã|Ã ­", "í", sentence)
-    sentence = re.sub(r"Ã“", "Ó", sentence)
-    sentence = re.sub(r"Ã³|í³", "ó", sentence)
-    sentence = re.sub(r"Ãš", "Ú", sentence)
-    sentence = re.sub(r"Ãº", "ú", sentence)
-    sentence = re.sub(r"Ã‘", "Ñ", sentence)
-    sentence = re.sub(r"Ã±|a±|í±", "ñ", sentence)
-    sentence = re.sub(r"Â¿", "¿", sentence)
-    sentence = re.sub(r"�", "í", sentence)
-    sentence = re.sub(r"éÂ¼", "üe", sentence)
-    sentence = re.sub(r"à", "á", sentence)
-    sentence = re.sub(r"è", "é", sentence)
-    sentence = re.sub(r"ì", "í", sentence)
-    sentence = re.sub(r"ò", "ó", sentence)
-    sentence = re.sub(r"ù", "ú", sentence)
     
-    sentence = re.sub(r"À", "Á", sentence)
-    sentence = re.sub(r"È", "É", sentence)
-    sentence = re.sub(r"Ì", "Í", sentence)
-    sentence = re.sub(r"Ò", "Ó", sentence)
-    sentence = re.sub(r"Ù", "Ú", sentence)
+    sentence = re.sub(r"б|Ã¡|à", "á", sentence)
+    sentence = re.sub(r"Ã©|è", "é", sentence)
+    sentence = re.sub(r"н|Ã|Ã ­|�|ì", "í", sentence)
+    sentence = re.sub(r"у|Ã³|í³|ò", "ó", sentence)
+    sentence = re.sub(r"ъ|Ãº|ù", "ú", sentence)
 
+    sentence = re.sub(r"Ã|À", "Á", sentence)
+    sentence = re.sub(r"Ã‰|È", "É", sentence)
+    sentence = re.sub(r"Ã|Ì", "Í", sentence)
+    sentence = re.sub(r"Ã“|Ò", "Ó", sentence)
+    sentence = re.sub(r"Ãš|Ù", "Ú", sentence)
+    
+    sentence = re.sub(r"Ã‘", "Ñ", sentence)
+    sentence = re.sub(r"с|Ã±|a±|í±", "ñ", sentence)
+    sentence = re.sub(r"е", "e", sentence)
+    sentence = re.sub(r"Â¿", "¿", sentence)
+    sentence = re.sub(r"éÂ¼", "üe", sentence)
     sentence = re.sub(r"`|‘|’|´", "'", sentence)
-    sentence = re.sub(r"“|”", '"', sentence)
+    sentence = re.sub(r"ss", "", sentence)
+    #sentence = re.sub(f"([0-9])+\'|\'([0-9]+)|[0-9\.,]+", "número", sentence)
 
     sentence = re.sub(r"(P|p)a\'l", r"\1ara el ", sentence)
     sentence = re.sub(r"(P|p)a\'", r"\1ara ", sentence)
@@ -132,51 +105,41 @@ def clean_sentence(sentence):
     sentence = re.sub(r"(D)i\'que", r"\1isque ", sentence)
     sentence = re.sub(r'\s+', ' ', sentence)
 
-    odd_characters = r"[-—–]"
+    return unicodedata.normalize('NFC', sentence.strip())
 
-    sentence = " ".join([ word for word in sentence.split(" ") if re.search(odd_characters, word) is None ])
+def clean_words(sentence):
+    odd_characters = r"[-—–]|jajaja|Ey,?|Woh,?|oh,?|Yeah,?|m(m)+|(la)+|Prr,?|Eh,?|ah,?|uh,?|ei,?|ie,?"
+    words = sentence.split(" ")
+    res = [words[0]]
+    for word in words[1:]:
+        if re.sub(r"\W+", "", word.lower()) != re.sub(r"\W+", "", res[-1].lower()):
+            res.append(word)
+
+    sentence = " ".join([ word for word in res if re.search(odd_characters, word, flags=re.IGNORECASE) is None ])
     sentence = re.sub(r'\s+', ' ', sentence)
 
-    foreign_char = r"[âãäçêëûüāœ]"
+    return sentence
 
-    if re.search(foreign_char, sentence) is None:
-        return " ".join(delete_consecutive_words(sentence.split(" "))).strip()
-    return ""
+def get_contractions(songs):
+    contractions = {}
 
-def delete_consecutive_words(words):
-    if not words:
-        return []
-    res = [words[0]]
-    for elem in words[1:]:
-        if re.sub(r"\W+", "", elem.lower()) != re.sub(r"\W+", "", res[-1].lower()):
-            res.append(elem)
-    return res
+    all_words = [ word for sentences in songs 
+                     for sentence in sentences 
+                     for word in sentence.split(" ")]
 
-def get_contractions(song_list):
-    contractions = []
-    con_num = {}
+    for word in all_words:
+        if "'" in word:
+            if word not in contractions:
+                contractions[word] = 0
+            contractions[word] += 1
 
-    for song in song_list:
-        sentences = song.split("\n")
-
-        sentences = [ clean_sentence(s) for s in sentences ]
-        sentences = [ s for s in sentences if 'as low as $' not in s and len(s.strip().split(' ')) > 1 ]
-        for sentence in sentences:
-            contractions.extend( [ s for s in sentence.split(" ") if "'" in s ] )
-    
-    for c in contractions:
-        if c not in con_num:
-            con_num[c] = 0
-        con_num[c] += 1
-        
-    return list(set(contractions)), con_num
+    return contractions
 
 def get_contractions_dict(sentences):
-    contractions, _ = get_contractions(sentences)
-    print(contractions)
+    contractions = get_contractions(sentences)
     contractions_dict = {}
 
-    for c in contractions:     
+    for c in list(contractions.keys()):     
         if (len(c) > 1 and c[-2] == "'" and not c[-1].isalnum()) or c[-1] == "'":
             contractions_dict[c] = c.replace("'", "s")
         elif "a'o" in c:
@@ -185,6 +148,8 @@ def get_contractions_dict(sentences):
             contractions_dict[c] = c.replace("i'o", "ido")
         elif "í'o" in c:
             contractions_dict[c] = c.replace("í'o", "ído")
+        elif "e'n" in c:
+            contractions_dict[c] = c.replace("e'n", "eron")
 
     return { **contractions_dict, **additional_contractions }
 
@@ -192,7 +157,16 @@ def clean_contractions(sentence, con_dict):
     words = sentence.split(" ")
     return " ".join([ con_dict[word] if word in con_dict else word for word in words ])
 
+def remove_sentences_with_contractions(sentence):
+    if "'" in sentence:
+        print(f"DELETED: {sentence}")
+        return ""
+    
+    return sentence
+
+
 additional_contractions = {
+    "mu'": "muy",
     "'e": 'de',
     "vo'a": 'voy a',
     "'tá": 'está',
@@ -369,4 +343,40 @@ additional_contractions = {
     "mi'jo!": 'mi hijo!',
     "mi'jo": 'mi hijo',
     "mama'te": 'mamaste',
-    '"Adió\'",': 'Adiós,'}
+    '"Adió\'",': 'Adiós,',
+    "to'el": "todo el",
+    "enca'quillo,": "encasquillo,",
+    "mata'n": "matan",
+    "ma'i": "mami",
+    "ex's": "ex",
+    "de'os": "dedos",
+    "foto'l": "foto del",
+    "adi's": "adiós",
+    "m's": "más",
+    "qu'": "qué",
+    "segu'as": "seguías",
+    "s'lo": "solo",
+    "as'y": "así y",
+    "cacha's": "cachas",
+    "'ón": "dónde",
+    "po'l": "por el",
+    "Shannan's": "Shannan",
+    "'pa": "para",
+    "mc's": "mc",
+    "MC's": "MC",
+    "Mc's": "Mc",
+    "ma'i": "mami",
+    "'esboque": "desboque",
+    "Llega'n": "Llegaron",
+    "'se": "ese",
+    "drage'o": "dragueo",
+    "CD's": "CDs",
+    "No'mas": "Nada mas",
+    "'lante": "adelante",
+    "'tras": "atrás",
+    "'cer": "hacer",
+    "'migos,": "amigos",
+    "saca'me": "sacarme",
+    "daña'n": "dañan",
+    "Kellogg's": "Kellogs",
+    "coraçao": "corazón"}

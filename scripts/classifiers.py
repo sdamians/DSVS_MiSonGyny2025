@@ -83,9 +83,9 @@ class AttentionPooling(nn.Module):
     def __init__(self, hidden_size):
         super().__init__()
         self.attention = nn.Sequential(
-            nn.Linear(hidden_size, hidden_size // 2),
+            nn.Linear(hidden_size, hidden_size),
             nn.Tanh(),
-            nn.Linear(hidden_size // 2, 1)
+            nn.Linear(hidden_size, 1)
         )
 
     def forward(self, H, num_verses):  # H: (B, V, L)
@@ -102,4 +102,4 @@ class AttentionPooling(nn.Module):
             weighted_results.append((verses * attn_weights).sum(dim=0))  # (V, L)
             all_attn_weights.append(attn_weights)
 
-        return t.stack(weighted_results, dim=0), all_attn_weights
+        return t.stack(weighted_results, dim=0), t.stack(all_attn_weights, dim=0)
