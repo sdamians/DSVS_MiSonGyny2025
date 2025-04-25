@@ -102,4 +102,4 @@ class AttentionPooling(nn.Module):
             weighted_results.append((verses * attn_weights).sum(dim=0))  # (V, L)
             all_attn_weights.append(attn_weights)
 
-        return t.stack(weighted_results, dim=0), t.stack(all_attn_weights, dim=0)
+        return t.stack(weighted_results, dim=0), all_attn_weights
