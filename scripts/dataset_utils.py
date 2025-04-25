@@ -33,9 +33,12 @@ def split_songs_into_verses(song_list, window_size=4, num_verses=20, offset=2, s
         for sentence in sentences:
             new_sentence = clean_contractions(sentence, contractions)
             new_sentence = remove_sentences_with_contractions(new_sentence)
-            new_sentences.append(new_sentence)
+            if new_sentence != "":
+                new_sentences.append(new_sentence)
 
-        verses = [ sentence_split_token.join(new_sentences[i:i + window_size]).strip() for i in range(0, len(new_sentences), offset) ]
+        verses = [ sentence_split_token.join(new_sentences[i:i + window_size]).strip() 
+                  for i in range(0, len(new_sentences), offset) 
+                  if i != len(new_sentences) - 1]
         new_songs.append(verses[:num_verses])
         
     return new_songs
@@ -52,10 +55,12 @@ def split_into_sentences(song):
             sentence = re.split(r'(?=[A-Z])', sentence)
             new_sentences.extend(sentence)
         return new_sentences
+    
+    #print(f"split_into_sentences: {sentences}")
     return sentences
 
 def clean_sentences(sentences):
-    pattern = r'as low as \$|\[.*\]|\(.*\)|{.*}|{.*]|\bBREAK|\bVerse|\bBridge|\bCORO|\bVerso'
+    pattern = r'as low as \$|\bBREAK|\bVerse|\bBridge|\bCORO|\bVerso'
 
     sentences = [sentence for sentence in sentences 
                  if not re.search(pattern=pattern, string=sentence, flags=re.IGNORECASE)
@@ -66,6 +71,11 @@ def clean_sentences(sentences):
     sentences = [sentence for sentence in sentences
                  if not re.search(pattern=foreign_char, string=sentence)]    
     
+    pattern = r"\[.*\]|\(.*\)|{.*}|{.*]"
+
+    sentences = [re.sub(pattern, "", sentence) for sentence in sentences]
+    sentences = [ sentence.strip() for sentence in sentences if len(sentence.strip()) > 0 ]
+    #print(f"clean_sentences: {sentences}")
     return sentences
 
 def clean_characters(sentence):
@@ -105,19 +115,21 @@ def clean_characters(sentence):
     sentence = re.sub(r"(D)i\'que", r"\1isque ", sentence)
     sentence = re.sub(r'\s+', ' ', sentence)
 
+    #print(f"clean_characters: {sentence.strip()}")
     return unicodedata.normalize('NFC', sentence.strip())
 
 def clean_words(sentence):
-    odd_characters = r"[-—–]|jajaja|Ey,?|Woh,?|oh,?|Yeah,?|m(m)+|(la)+|Prr,?|Eh,?|ah,?|uh,?|ei,?|ie,?"
+    odd_characters = r"[-—–]|ja(ja)+|\bEy,?|\bWoh,?|\boh,?|\bYeah,?|m(m)+|la( la)+|\bPrr,?|\bEh,?|\bah,?|\buh,?|\bei,?|\bie,?|\beah,?"
     words = sentence.split(" ")
     res = [words[0]]
     for word in words[1:]:
         if re.sub(r"\W+", "", word.lower()) != re.sub(r"\W+", "", res[-1].lower()):
             res.append(word)
-
+    
     sentence = " ".join([ word for word in res if re.search(odd_characters, word, flags=re.IGNORECASE) is None ])
     sentence = re.sub(r'\s+', ' ', sentence)
 
+    #print(f"clean_words: {sentence}")
     return sentence
 
 def get_contractions(songs):
@@ -166,6 +178,7 @@ def remove_sentences_with_contractions(sentence):
 
 
 additional_contractions = {
+    "to'": "todos",
     "mu'": "muy",
     "'e": 'de',
     "vo'a": 'voy a',
