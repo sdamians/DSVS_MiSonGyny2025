@@ -51,8 +51,9 @@ def split_songs_into_verses(song_list, window_size=4, num_verses=20, offset=2, s
         sentences = song.split("\n")
 
         sentences = [ clean_sentence(s) for s in sentences ]
-        sentences = [ s for s in sentences if 'as low as $' not in s and len(s.strip().split(' ')) > 1 ]
+        sentences = [ s for s in sentences if 'as low as $' not in s and 'coro' != s and len(s.strip().split(' ')) > 1 ]
         sentences = [ clean_contractions(s, con_dict) for s in sentences ]
+        sentences = list(dict.fromkeys(sentences))
 
         verses = [ sentence_split_token.join(sentences[i:i + window_size]).strip() for i in range(0, len(sentences), offset) ]
         songs.append(verses[:num_verses])
@@ -76,19 +77,80 @@ def clean_sentence(sentence):
     """
     sentence = re.sub(r'\[.*\]', '', sentence)
     sentence = re.sub(r'\(.*\)', '', sentence)
+    
+
     # Delete camel case
     sentence = re.sub(r'(?<=[a-z])(?=[A-Z])', ' ', sentence)
+    
     sentence = re.sub(r'\,', ', ', sentence)
     sentence = re.sub(r' \,', ',', sentence)
+    sentence = re.sub(r'\.+', '', sentence)
+
+    sentence = re.sub(r"\xad|\x81|…|_|\u200b", " ", sentence)
+    sentence = re.sub(r"б", "á", sentence)
+    sentence = re.sub(r"н", "í", sentence)
+    sentence = re.sub(r"ъ", "ú", sentence)
+    sentence = re.sub(r"у", "ó", sentence)
+    sentence = re.sub(r"с", "ñ", sentence)
+    sentence = re.sub(r"е", "e", sentence)
+
+    sentence = re.sub(r"Ã", "Á", sentence)
+    sentence = re.sub(r"Ã¡", "á", sentence)
+    sentence = re.sub(r"Ã‰", "É", sentence)
+    sentence = re.sub(r"Ã©", "é", sentence)
+    sentence = re.sub(r"Ã", "Í", sentence)
+    sentence = re.sub(r"Ã|Ã ­", "í", sentence)
+    sentence = re.sub(r"Ã“", "Ó", sentence)
+    sentence = re.sub(r"Ã³|í³", "ó", sentence)
+    sentence = re.sub(r"Ãš", "Ú", sentence)
+    sentence = re.sub(r"Ãº", "ú", sentence)
+    sentence = re.sub(r"Ã‘", "Ñ", sentence)
+    sentence = re.sub(r"Ã±|a±|í±", "ñ", sentence)
+    sentence = re.sub(r"Â¿", "¿", sentence)
+    sentence = re.sub(r"�", "í", sentence)
+    sentence = re.sub(r"éÂ¼", "üe", sentence)
+    sentence = re.sub(r"à", "á", sentence)
+    sentence = re.sub(r"è", "é", sentence)
+    sentence = re.sub(r"ì", "í", sentence)
+    sentence = re.sub(r"ò", "ó", sentence)
+    sentence = re.sub(r"ù", "ú", sentence)
+    
+    sentence = re.sub(r"À", "Á", sentence)
+    sentence = re.sub(r"È", "É", sentence)
+    sentence = re.sub(r"Ì", "Í", sentence)
+    sentence = re.sub(r"Ò", "Ó", sentence)
+    sentence = re.sub(r"Ù", "Ú", sentence)
+
+    sentence = re.sub(r"`|‘|’|´", "'", sentence)
+    sentence = re.sub(r"“|”", '"', sentence)
+
     sentence = re.sub(r"(P|p)a\'l", r"\1ara el ", sentence)
-    sentence = re.sub(r"(P|p)a’", r"\1ara ", sentence)
     sentence = re.sub(r"(P|p)a\'", r"\1ara ", sentence)
     sentence = re.sub(r"(P|p)\'", r"\1ara ", sentence)
     sentence = re.sub(r"(N|n)a\'", r"\1ada ", sentence)  
     sentence = re.sub(r"\'(T|t)amo", r"estamos ", sentence)
     sentence = re.sub(r"(D)i\'que", r"\1isque ", sentence)
     sentence = re.sub(r'\s+', ' ', sentence)
-    return sentence.strip()
+
+    odd_characters = r"[-—–]"
+
+    sentence = " ".join([ word for word in sentence.split(" ") if re.search(odd_characters, word) is None ])
+    sentence = re.sub(r'\s+', ' ', sentence)
+
+    foreign_char = r"[âãäçêëûüāœ]"
+
+    if re.search(foreign_char, sentence) is None:
+        return " ".join(delete_consecutive_words(sentence.split(" "))).strip()
+    return ""
+
+def delete_consecutive_words(words):
+    if not words:
+        return []
+    res = [words[0]]
+    for elem in words[1:]:
+        if re.sub(r"\W+", "", elem.lower()) != re.sub(r"\W+", "", res[-1].lower()):
+            res.append(elem)
+    return res
 
 def get_contractions(song_list):
     contractions = []

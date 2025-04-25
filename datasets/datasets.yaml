@@ -1,0 +1,28 @@
+
+task1_mil_v2:
+  window_size: 1
+  offset: None
+  handle_odd_chars: False
+  handle_contractions: False
+  handle_dashes: False
+
+task1_mil_v3:
+  window_size: 4
+  offset: None
+  handle_odd_chars: False
+  handle_contractions: False
+  handle_dashes: False
+
+task1_mil_v4:
+  window_size: 4
+  offset: 2
+  handle_odd_chars: False
+  handle_contractions: True
+  handle_dashes: False
+
+task1_mil_v5:
+  window_size: 4
+  offset: 2
+  handle_odd_chars: True
+  handle_contractions: True
+  handle_dashes: True
