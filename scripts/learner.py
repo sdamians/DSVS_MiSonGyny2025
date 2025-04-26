@@ -27,7 +27,7 @@ class Learner:
     if "reduction" in criterion_params:
       self.criterion = nn.CrossEntropyLoss(weight=class_weights, **criterion_params)
     else:
-      criterion_params["alpha"] = t.tensor(criterion_params["alpha"])
+      criterion_params["alpha"] = t.tensor(criterion_params["alpha"]).to(device)
       self.criterion = FocalLoss(**criterion_params)
 
     self.device = device
