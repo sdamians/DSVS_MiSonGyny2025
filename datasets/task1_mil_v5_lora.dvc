@@ -1,0 +1,6 @@
+outs:
+- md5: adfab15b228a30def72a774aa9a8710f.dir
+  size: 2201638
+  nfiles: 3
+  hash: md5
+  path: task1_mil_v5_lora
