@@ -45,8 +45,8 @@ class Learner:
       t0 = time.time() # We save the start time to see how long it takes.
       epoch_loss = []  # We reset the loss value for each epoch.
       
-      with tqdm(total=100, desc=f'Epoch {epoch + 1}/{n_epochs}', dynamic_ncols=True) as pbar:
-        for step, batch in tqdm(enumerate(trainset)):
+      with tqdm(total=len(trainset), desc=f'Epoch {epoch + 1}/{n_epochs}', dynamic_ncols=True) as pbar:
+        for step, batch in enumerate(trainset):
           batch_loss = 0
 
           input_ids = batch["input_ids"].to(self.device)
@@ -67,7 +67,7 @@ class Learner:
           batch_loss += loss.item()
           pbar.set_postfix({ "loss": loss.item() })
           pbar.update(1)
-          
+
           # Backpropagation
           loss.backward()
 
