@@ -12,7 +12,7 @@ from utils import format_time
 from utils import get_metrics
 
 class Learner:
-  def __init__(self, classifier, class_weights: Tensor, optimizer_params: dict, criterion_params: dict, scheduler_params: dict,  device="cpu"):
+  def __init__(self, classifier, class_weights: Tensor, optimizer_params: dict, criterion_params: dict, scheduler_params: dict, device="cpu"):
     self.model = classifier
 
     self.optimizer = t.optim.Adam(self.model.parameters(), **optimizer_params)
@@ -159,7 +159,7 @@ class Learner:
       all_preds = np.array(all_preds).flatten()
       all_labels = np.array(all_labels).flatten()
 
-      metrics = get_metrics(all_labels, all_preds, all_probs[:, 1], promedio='binary')
+      metrics = get_metrics(all_labels, all_preds, all_probs[:, 1], promedio='macro')
 
       print(msg)
       for key in metrics:
