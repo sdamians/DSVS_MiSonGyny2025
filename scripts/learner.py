@@ -66,7 +66,8 @@ class Learner:
           loss = self.criterion(outputs, labels) #outputs[0]
           batch_loss += loss.item()
           pbar.set_postfix({ "loss": loss.item() })
-
+          pbar.update(1)
+          
           # Backpropagation
           loss.backward()
 
