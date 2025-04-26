@@ -20,8 +20,8 @@ params = {
             "amsgrad": False
         },
         "criterion": {
-            "reduction": "sum", #mean
-            "label_smoothing": 0    
+            "alpha": [0.05, 0.15, 0.35, 0.45],
+            "gamma": 2 
         },    
         "scheduler":{
             "num_cycles": 1.5

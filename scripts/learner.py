@@ -3,6 +3,7 @@ import torch as t
 import torch.nn as nn
 import numpy as np
 import gc
+import torch.nn.functional as F
 
 from torch import Tensor
 from torch.utils.data import DataLoader
@@ -12,12 +13,22 @@ from utils import format_time
 from utils import get_metrics
 
 class Learner:
-  def __init__(self, classifier, class_weights: Tensor, optimizer_params: dict, criterion_params: dict, scheduler_params: dict, device="cpu"):
+  def __init__(self, classifier, 
+               class_weights: Tensor, 
+               optimizer_params: dict, 
+               criterion_params: dict, 
+               scheduler_params: dict, 
+               device="cpu"):
+    
     self.model = classifier
 
     self.optimizer = t.optim.Adam(self.model.parameters(), **optimizer_params)
 
-    self.criterion = nn.CrossEntropyLoss(weight=class_weights, **criterion_params)
+    if "reduction" in criterion_params:
+      self.criterion = nn.CrossEntropyLoss(weight=class_weights, **criterion_params)
+    else:
+      criterion_params["alpha"] = t.tensor(criterion_params["alpha"])
+      self.criterion = FocalLoss(**criterion_params)
 
     self.device = device
 
@@ -169,3 +180,29 @@ class Learner:
     print(f"\tValidation took: {format_time(time.time() - t0)}")
 
     return all_preds, all_probs, all_labels, eval_loss
+  
+
+class FocalLoss(nn.Module):
+    def __init__(self, alpha=None, gamma=2):
+        """
+        alpha: Tensor de pesos para cada clase, shape (num_classes,)
+        gamma: Focusing parameter
+        """
+        super().__init__()
+        if alpha is not None and not isinstance(alpha, Tensor):
+            raise ValueError("alpha must be a Tensor")
+        self.alpha = alpha
+        self.gamma = gamma
+
+    def forward(self, logits, targets):
+        ce_loss = F.cross_entropy(logits, targets, reduction='none')
+        pt = t.exp(-ce_loss)
+
+        if self.alpha is not None:
+            # Selecciona el alpha correspondiente a cada target
+            alpha_t = self.alpha.gather(0, targets)
+            focal_loss = alpha_t * (1 - pt) ** self.gamma * ce_loss
+        else:
+            focal_loss = (1 - pt) ** self.gamma * ce_loss
+        
+        return focal_loss.mean()
