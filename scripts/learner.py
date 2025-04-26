@@ -6,6 +6,7 @@ import gc
 
 from torch import Tensor
 from torch.utils.data import DataLoader
+from transformers import get_cosine_schedule_with_warmup
 from tqdm import tqdm
 from utils import format_time
 from utils import get_metrics
@@ -23,90 +24,94 @@ class Learner:
     self.scheduler_params = scheduler_params
 
   def train(self, trainset: DataLoader, valset: DataLoader, n_epochs: int, gradient_accumulator_size: int=2):
-    batch_size = trainset.batch_size
+    t_gral = time.time()
+
     max_step_t = len(trainset)
 
-    scheduler = t.optim.lr_scheduler.PolynomialLR(self.optimizer, **self.scheduler_params)
+    # scheduler = t.optim.lr_scheduler.PolynomialLR(self.optimizer, **self.scheduler_params)
+    
+    scheduler = get_cosine_schedule_with_warmup(
+        self.optimizer,
+        num_warmup_steps=int(0.1 * max_step_t * n_epochs),  # Warmup del 10%
+        num_training_steps=(max_step_t * n_epochs),
+        **self.scheduler_params  # Opcional: media onda de coseno (default)
+    )
 
-    total_loss = []
-    total_lr = []
-
+    # Training mode.
+    self.model.train()
+    self.model.zero_grad()
+  
     for epoch in range(n_epochs):
-      # We save the start time to see how long it takes.
-      t0 = time.time()
+      t0 = time.time() # We save the start time to see how long it takes.
+      epoch_loss = []  # We reset the loss value for each epoch.
+      
+      with tqdm(total=100, desc=f'Epoch {epoch + 1}/{n_epochs}', dynamic_ncols=True) as pbar:
+        for step, batch in tqdm(enumerate(trainset)):
+          batch_loss = 0
 
-      # We reset the loss value for each epoch.
-      epoch_loss = []
+          input_ids = batch["input_ids"].to(self.device)
+          attention_mask = batch["attention_mask"].to(self.device)
+          labels = batch["labels"].to(self.device)
 
-      # Training mode.
-      self.model.train()
-      self.model.zero_grad()
+          if "pad_len" in batch:
+            num_verses = batch["pad_len"]
 
-      for step, batch in tqdm(enumerate(trainset)):
-        batch_loss = 0
+          # Propagation forward in the layers
+          if "pad_len" in batch:
+            outputs = self.model(input_ids, attention_mask=attention_mask, num_verses=num_verses)
+          else:
+            outputs = self.model(input_ids, attention_mask=attention_mask)
 
-        input_ids = batch["input_ids"].to(self.device)
-        attention_mask = batch["attention_mask"].to(self.device)
-        labels = batch["labels"].to(self.device)
-        if "pad_len" in batch:
-          num_verses = batch["pad_len"]
+          # We calculate the loss of the present minibatch
+          loss = self.criterion(outputs, labels) #outputs[0]
+          batch_loss += loss.item()
+          pbar.set_postfix({ "loss": loss.item() })
 
-        # Propagation forward in the layers
-        if "pad_len" in batch:
-          outputs = self.model(input_ids, attention_mask=attention_mask, num_verses=num_verses)
-        else:
-          outputs = self.model(input_ids, attention_mask=attention_mask)
+          # Backpropagation
+          loss.backward()
 
-        # We calculate the loss of the present minibatch
-        loss = self.criterion(outputs, labels) #outputs[0]
-        batch_loss += loss.item()
-        epoch_loss.append( loss.item() )
+          #Update learning rate each end of epoch
+          scheduler.step()
+          
+          # So we can implement gradient accumulator technique
+          if (step > 0 and step % gradient_accumulator_size == 0) or (step == max_step_t - 1):
 
-        # Backpropagation
-        loss.backward()
+            #(this prevents the gradient from becoming explosive)
+            t.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
 
-        # So we can implement gradient accumulator technique
-        if (step > 0 and step % gradient_accumulator_size == 0) or (step == max_step_t - 1):
+            # We update the weights and bias according to the optimizer
+            self.optimizer.step()
 
-          #(this prevents the gradient from becoming explosive)
-          t.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+            # We clean the gradients for the accumulator batch
+            self.model.zero_grad()
 
-          # We update the weights and bias according to the optimizer
-          self.optimizer.step()
+          input_ids.to("cpu")
+          attention_mask.to("cpu")
+          labels.to("cpu")
 
-          # We clean the gradients for the accumulator batch
-          self.model.zero_grad()
+          del input_ids
+          del attention_mask
+          del labels
 
-        input_ids.to("cpu")
-        attention_mask.to("cpu")
-        labels.to("cpu")
+          t.cuda.empty_cache()
+          gc.collect()
 
-        del input_ids
-        del attention_mask
-        del labels
-
-        t.cuda.empty_cache()
-        gc.collect()
-
-        if (step % 50 == 0) or (step == max_step_t - 1):
-          print(f"Batch {step}/{max_step_t} avg loss: {np.sum(epoch_loss) / (step+1):.5f}")
+          # if (step % ( max_step_t // 5 ) == 0) or (step == max_step_t - 1):
+          #   print(f"Batch {step}/{max_step_t} avg loss: {np.sum(epoch_loss) / (step+1):.5f}")
         
-
-      #Update learning rate each end of epoch
-      scheduler.step()
-      total_lr.append(scheduler.get_last_lr())
-      total_loss.append(np.sum(epoch_loss)/max_step_t)
+          epoch_loss.append(batch_loss)
 
       # We calculate the average loss in the current epoch of the training set
-      print(f"\n\tAverage training loss: {np.sum(epoch_loss)/max_step_t:.5f}")
+      print(f"\n\tAverage training loss: {np.sum(epoch_loss)/max_step_t:.4f}")
       print(f"\tTraining epoch {epoch + 1} took: {format_time(time.time() - t0)}")
 
       print("\n\tValidation step:")
-      self.test(valset)
+      self.test(trainset, "trainset metrics:")
+      self.test(valset, "valset metrics:")
 
-    print("\nTraining complete")
+    print(f"\nTraining complete. It took: {format_time(time.time() - t_gral)}")
 
-  def test(self, testset: DataLoader):
+  def test(self, testset: DataLoader, msg: str):
     t0 = time.time()
 
     # We put the model in validation mode
@@ -147,24 +152,19 @@ class Learner:
           loss = self.criterion(outputs, labels)
           eval_loss += loss
 
-    #all_preds = t.tensor(all_preds)
-    #all_probs = t.tensor(all_probs)
-
     # We show the final accuracy for this epoch
     if labels is not None:
       all_probs = np.array(all_probs)
       all_preds = np.array(all_preds).flatten()
       all_labels = np.array(all_labels).flatten()
-      
-      #print(f"probs: {all_probs[:,1]} {len(all_probs[:,1])}")
-      #print(f"preds: {all_preds} {len(all_preds)}")
-      #print(f"label: {all_labels} {len(all_labels)}")
 
       metrics = get_metrics(all_labels, all_preds, all_probs[:, 1], promedio='binary')
 
+      print(msg)
       for key in metrics:
-        print(f"\n\t{key}: {metrics[key]}")
-      print(f"\n\tEvalLoss: {eval_loss}")
+        print(f"\t{key}: {metrics[key]:.4f}")
+      print(f"\tEvalLoss: {eval_loss:.4f}")
+
     print(f"\tValidation took: {format_time(time.time() - t0)}")
 
     return all_preds, all_probs, all_labels, eval_loss

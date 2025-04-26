@@ -24,8 +24,7 @@ params = {
             "label_smoothing": 0    
         },    
         "scheduler":{
-            "total_iters":5,
-            "power":1.0
+            "num_cycles": 1.5
         }
     },
     "tokenizer":{
