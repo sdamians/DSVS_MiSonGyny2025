@@ -163,8 +163,8 @@ class Learner:
 
       print(msg)
       for key in metrics:
-        print(f"\t{key}: {metrics[key]:.4f}")
-      print(f"\tEvalLoss: {eval_loss:.4f}")
+        print(f"\t{key}: {metrics[key]}")
+      print(f"\tEvalLoss: {eval_loss}")
 
     print(f"\tValidation took: {format_time(time.time() - t0)}")
 
