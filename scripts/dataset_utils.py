@@ -192,6 +192,8 @@ def remove_sentences_with_contractions(sentence):
 
 
 additional_contractions = {
+    "A'lante,": "Adelante,",
+    "lucí'a": "lúcida",
     "'lante,": "adelante",
     "ma'i,": "mami",
     "culipande'o": "culipandeo",
