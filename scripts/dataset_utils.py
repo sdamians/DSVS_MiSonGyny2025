@@ -22,7 +22,7 @@ def split_songs_into_verses(song_list, window_size=4, num_verses=20, offset=2, s
         #   Limpieza a nivel palabra
         sentences = [ clean_words(sentence) for sentence in sentences ]
         #   Se añaden oraciones únicas
-        songs.append(list(dict.fromkeys(sentences)))
+        songs.append(remove_repeated_sentences(sentences))
 
     # 4. Limpieza de contracciones
     contractions = get_contractions_dict(songs)
@@ -54,9 +54,16 @@ def split_into_sentences(song):
         for sentence in sentences:
             sentence = re.split(r'(?=[A-Z])', sentence)
             new_sentences.extend(sentence)
+
         return new_sentences
     
     #print(f"split_into_sentences: {sentences}")
+    return sentences
+
+def remove_repeated_sentences(sentences):
+    sentences = list(dict.fromkeys(sentences))
+    if len(sentences) == 1:
+        return re.split(r'(?<=, )', sentences[0])
     return sentences
 
 def clean_sentences(sentences):
