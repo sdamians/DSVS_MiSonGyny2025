@@ -36,11 +36,14 @@ def split_songs_into_verses(song_list, window_size=4, num_verses=20, offset=2, s
             if new_sentence != "":
                 new_sentences.append(new_sentence)
 
-        verses = [ sentence_split_token.join(new_sentences[i:i + window_size]).strip() 
-                  for i in range(0, len(new_sentences), offset) 
-                  if i != len(new_sentences) - 1]
-        new_songs.append(verses[:num_verses])
-        
+        if window_size != -1:
+            verses = [ sentence_split_token.join(new_sentences[i:i + window_size]).strip() 
+                    for i in range(0, len(new_sentences), offset) 
+                    if i != len(new_sentences) - 1]
+            new_songs.append(verses[:num_verses])
+        else:
+            new_songs.append(re.sub(r"\s+", " ", " ".join(new_sentences)))
+
     return new_songs
 
 
@@ -169,6 +172,10 @@ def get_contractions_dict(sentences):
             contractions_dict[c] = c.replace("í'o", "ído")
         elif "e'n" in c:
             contractions_dict[c] = c.replace("e'n", "eron")
+        elif "i'a" in c:
+            contractions_dict[c] = c.replace("i'a", "ida")
+        elif "a'n" in c:
+            contractions_dict[c] = c.replace("a'n", "aron")
 
     return { **contractions_dict, **additional_contractions }
 
@@ -185,6 +192,32 @@ def remove_sentences_with_contractions(sentence):
 
 
 additional_contractions = {
+    "'lante,": "adelante",
+    "ma'i,": "mami",
+    "culipande'o": "culipandeo",
+    "'esbocar": "desbocar",
+    "mone'a": "monedas",
+    "e'to": "esto",
+    "so'ar": "soñar",
+    "hije'puta": "hija de puta",
+    "picha'era": "pichadera",
+    "A'lante": "adelante",
+    "punta'e": "punta de",
+    "'Ta": "Esta",
+    "'no": "no",
+    "'jefe": "jefe",
+    "buchanan's": "buchanan",
+    "'ñor": "señor",
+    "MC's,": "MC",
+    "millo's": "millonarios",
+    "toas": "todas",
+    "quita'n": "quitaron",
+    "'Pera": "Espera",
+    "'tos": "todos",
+    "ma'i": "mami",
+    "'Inche": "pinche",
+    "'Ta": "Esta",
+    "'ón": "donde",
     "to'": "todos",
     "mu'": "muy",
     "'e": 'de',
