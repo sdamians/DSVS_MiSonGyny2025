@@ -74,7 +74,7 @@ class Learner:
             outputs = self.model(input_ids, attention_mask=attention_mask)
 
           # We calculate the loss of the present minibatch
-          loss = self.criterion(outputs, labels) #outputs[0]
+          loss = self.criterion(outputs.logits, labels) #outputs[0]
           batch_loss += loss.item()
           pbar.set_postfix({ "loss": loss.item() })
           pbar.update(1)
@@ -151,7 +151,7 @@ class Learner:
         else:
           outputs = self.model(input_ids, attention_mask=attention_mask)
 
-        probs = t.softmax(outputs, dim=-1) # [batch n_classes]
+        probs = t.softmax(outputs.logits, dim=-1) # [batch n_classes]
         preds = t.argmax(probs, dim=1).unsqueeze(-1) # [batch 1]
 
         #probs = t.gather(probs, dim=-1, index=preds)

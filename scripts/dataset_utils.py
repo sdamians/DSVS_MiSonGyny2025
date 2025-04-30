@@ -1,437 +1,542 @@
 import re
-import torch as t
 import unicodedata
 from datasets import Dataset
 
 
-def split_songs_into_verses(song_list, window_size=4, num_verses=20, offset=2, sentence_split_token=" "):
+def df_to_dataset(df, columns=["lyrics", "id", "label"], text_column="lyrics", contractions_dict=None):
+    dataset_dict = { column: df[column].to_numpy() for column in columns if column != text_column }
+
+    df['song'] = df[text_column].apply(clean_characters)
     
-    songs = []
+    if contractions_dict is None:
+        contractions = get_contractions(df['song'])
+        contractions = sorted(contractions.items(), key=lambda x: x[1], reverse=True)
+        contractions_dict = get_contractions_dict([ x[0] for x in contractions ])
 
-    for song in song_list:
-        # 1. Separar oraciones
-        #    Si cada canción solo tiene una oración, separarla por cada que se encuentre una mayúscula
-        sentences = split_into_sentences(song)
+    songs = [ song.split("\n") for song in df['song'].to_numpy() ]
 
-        # 2. Eliminar oraciones 
-        #    Que tienen [], (), Verse, BREAK, verso, break, as low as $, o vacías
-        sentences = clean_sentences(sentences)
-
-        # 3. Limpieza de caracteres
-        sentences = [ clean_characters(sentence) for sentence in sentences]
-        #   Limpieza a nivel palabra
-        sentences = [ clean_words(sentence) for sentence in sentences ]
-        #   Se añaden oraciones únicas
-        songs.append(remove_repeated_sentences(sentences))
-
-    # 4. Limpieza de contracciones
-    contractions = get_contractions_dict(songs)
     new_songs = []
-
     for sentences in songs:
-        new_sentences = []
-        for sentence in sentences:
-            new_sentence = clean_contractions(sentence, contractions)
-            new_sentence = remove_sentences_with_contractions(new_sentence)
-            if new_sentence != "":
-                new_sentences.append(new_sentence)
+        new_sentences = [ clean_words(sentence, contractions_dict) for sentence in sentences ]
+        new_songs.append(new_sentences)
 
-        if window_size != -1:
-            verses = [ sentence_split_token.join(new_sentences[i:i + window_size]).strip() 
-                    for i in range(0, len(new_sentences), offset) 
-                    if i != len(new_sentences) - 1]
-            new_songs.append(verses[:num_verses])
+    dataset_dict['songs'] = [ clean_sentences(sentences) for sentences in new_songs ]
+
+    return Dataset.from_dict(dataset_dict), contractions_dict
+    
+def clean_words(sentence, contractions_dict):
+    odd_characters = r"[-—–]|ja(ja)+|\bEy|\bWoh|\boh|\bYeah|m(m)+|la( la)+|\bPrr|\bEh|\bah|\buh|\bei|\bie|\beah|\bYeh|\bO+h|\bUah|\bOah|\baoh|\bParte [0-9]"
+    words = sentence.strip().split(" ")
+    
+    res = []
+    for word in words:
+        
+        if word.lower() in contractions_dict and contractions_dict[word.lower()] == "[LIMPIAR]":
+            new_word = ""
+        elif word.lower() in contractions_dict and contractions_dict[word.lower()] != '':
+            new_word = contractions_dict[word.lower()]
+            if word[0].isupper():
+                new_word = new_word.capitalize()
         else:
-            new_songs.append(re.sub(r"\s+", " ", " ".join(new_sentences)))
+            new_word = word
+        
+        if len(res) == 0 and new_word != "":
+            res.append(new_word)
 
-    return new_songs
-
-
-def split_into_sentences(song):
-    # Camel case split
-    song = re.sub(r'(?<=[a-z])(?=[A-Z])', ' ', song)
+        elif len(res) > 0 and new_word.lower() != res[-1].lower():
+            res.append(new_word)
     
-    sentences = song.split("\n")
-    if len(sentences) < 5:
-        new_sentences = []
-        for sentence in sentences:
-            sentence = re.split(r'(?=[A-Z])', sentence)
-            new_sentences.extend(sentence)
-
-        return new_sentences
+    sentence = " ".join([ word for word in res if re.search(odd_characters, word, flags=re.IGNORECASE) is None ])
     
-    #print(f"split_into_sentences: {sentences}")
-    return sentences
+    sentence = re.sub(r'\s+', ' ', sentence).strip()
+    sentence = re.sub(r"\[.*\]|\(.*\)|{.*}|{.*\]|\[.*\)", "", sentence)
+    
+    sentence = re.sub(r"\s+([,!\?])", r"\1", sentence)
+    sentence = re.sub(r"([¿¡])\s+", r"\1", sentence)
+    
+    sentence = re.sub(r"^,+ ", "", sentence)
+    sentence = re.sub(r",+", ",", sentence)
+    sentence = re.sub(r"[\(\)\[\]{}]", "", sentence)
 
-def remove_repeated_sentences(sentences):
-    sentences = list(dict.fromkeys(sentences))
-    if len(sentences) == 1:
-        return re.split(r'(?<=, )', sentences[0])
-    return sentences
+    #print(f"clean_words: {sentence}")
+    return sentence.strip()
+
+def smart_capitalize(text):
+    # Busca la primera letra alfabética (incluyendo letras acentuadas y ñ)
+    match = re.search(r'([a-zA-ZáéíóúüñÁÉÍÓÚÜÑ])', text)
+    if not match:
+        return text  # No hay letra alfabética
+
+    idx = match.start()
+    return text[:idx] + text[idx].upper() + text[idx+1:]
 
 def clean_sentences(sentences):
-    pattern = r'as low as \$|\bBREAK|\bVerse|\bBridge|\bCORO|\bVerso'
+    pattern = r'as low as \$|as low as|\bBREAK|\bVerse|\bBridge|\bCORO|\bVerso|Todos los Derechos Reservados'
 
     sentences = [sentence for sentence in sentences 
                  if not re.search(pattern=pattern, string=sentence, flags=re.IGNORECASE)
-                 and ' ' in sentence]
+                 and ' ' in sentence.strip()]
 
-    foreign_char = r"[âãäçêëûüāœ]"
-
-    sentences = [sentence for sentence in sentences
-                 if not re.search(pattern=foreign_char, string=sentence)]    
+    sentences = [ re.sub(pattern, "", sentence) for sentence in sentences ]
+    sentences = [ smart_capitalize(sentence) for sentence in sentences if re.search(r"[A-Za-z]", sentence) is not None ]
     
-    pattern = r"\[.*\]|\(.*\)|{.*}|{.*]"
-
-    sentences = [re.sub(pattern, "", sentence) for sentence in sentences]
-    sentences = [ sentence.strip() for sentence in sentences if len(sentence.strip()) > 0 ]
     #print(f"clean_sentences: {sentences}")
     return sentences
 
-def clean_characters(sentence):
-    sentence = re.sub(r'[\]\)\*“”\"#$%/@\[\(°=&:;]', '', sentence)
-    sentence = re.sub(r'\.+', " ", sentence)
-    sentence = re.sub(r"''", "", sentence)
-    sentence = re.sub(r"\xad|\x81|…|_|\u200b", " ", sentence)
-    sentence = re.sub(r'\,', ', ', sentence)
-    sentence = re.sub(r' \,', ',', sentence)
+def clean_characters(text):
+    text = re.sub('\n+', '\n', text)
+    text = re.sub(r"`|‘|’|´", "'", text)
+    text = re.sub(r"''", "", text)
+    text = re.sub(r"\xad|\x81|…|_|\u200b", " ", text)
+    text = re.sub("[-—–]+", "-", text) 
+
+    text = re.sub(r'([,¡!¿\?\[\]\(\)])', r' \1 ', text)
     
-    sentence = re.sub(r"б|Ã¡|à", "á", sentence)
-    sentence = re.sub(r"Ã©|è", "é", sentence)
-    sentence = re.sub(r"н|Ã|Ã ­|�|ì", "í", sentence)
-    sentence = re.sub(r"у|Ã³|í³|ò", "ó", sentence)
-    sentence = re.sub(r"ъ|Ãº|ù", "ú", sentence)
+    text = re.sub(r"б|Ã¡|à", "á", text)
+    text = re.sub(r"Ã©|è|й", "é", text)
+    text = re.sub(r"н|Ã|Ã ­|�|ì", "í", text)
+    text = re.sub(r"у|Ã³|í³|ò", "ó", text)
+    text = re.sub(r"ъ|Ãº|ù", "ú", text)
 
-    sentence = re.sub(r"Ã|À", "Á", sentence)
-    sentence = re.sub(r"Ã‰|È", "É", sentence)
-    sentence = re.sub(r"Ã|Ì", "Í", sentence)
-    sentence = re.sub(r"Ã“|Ò", "Ó", sentence)
-    sentence = re.sub(r"Ãš|Ù", "Ú", sentence)
+    text = re.sub(r"Ã|À", "Á", text)
+    text = re.sub(r"Ã‰|È", "É", text)
+    text = re.sub(r"Ã|Ì", "Í", text)
+    text = re.sub(r"Ã“|Ò", "Ó", text)
+    text = re.sub(r"Ãš|Ù", "Ú", text)
     
-    sentence = re.sub(r"Ã‘", "Ñ", sentence)
-    sentence = re.sub(r"с|Ã±|a±|í±", "ñ", sentence)
-    sentence = re.sub(r"е", "e", sentence)
-    sentence = re.sub(r"Â¿", "¿", sentence)
-    sentence = re.sub(r"éÂ¼", "üe", sentence)
-    sentence = re.sub(r"`|‘|’|´", "'", sentence)
-    sentence = re.sub(r"ss", "", sentence)
-    #sentence = re.sub(f"([0-9])+\'|\'([0-9]+)|[0-9\.,]+", "número", sentence)
+    text = re.sub(r"Ã‘", "Ñ", text)
+    text = re.sub(r"с|Ã±|a±|í±", "ñ", text)
+    text = re.sub(r"е", "e", text)
+    text = re.sub(r"Â¿|Ї", "¿", text)
+    text = re.sub(r"éÂ¼", "üe", text)
+    text = re.sub(r"ss ", " ", text)  
 
-    sentence = re.sub(r"(P|p)a\'l", r"\1ara el ", sentence)
-    sentence = re.sub(r"(P|p)a\'", r"\1ara ", sentence)
-    sentence = re.sub(r"(P|p)\'", r"\1ara ", sentence)
-    sentence = re.sub(r"(N|n)a\'", r"\1ada ", sentence)  
-    sentence = re.sub(r"\'(T|t)amo", r"estamos ", sentence)
-    sentence = re.sub(r"(D)i\'que", r"\1isque ", sentence)
-    sentence = re.sub(r'\s+', ' ', sentence)
+    text = re.sub(r"[^A-Za-zÁÉÍÓÚáéíóúüÑñ¿\?!¡,\[\]\(\)\n'0-9- ]", '', text)
+    text = re.sub(" +", " ", text)
 
-    #print(f"clean_characters: {sentence.strip()}")
-    return unicodedata.normalize('NFC', sentence.strip())
-
-def clean_words(sentence):
-    odd_characters = r"[-—–]|ja(ja)+|\bEy,?|\bWoh,?|\boh,?|\bYeah,?|m(m)+|la( la)+|\bPrr,?|\bEh,?|\bah,?|\buh,?|\bei,?|\bie,?|\beah,?"
-    words = sentence.split(" ")
-    res = [words[0]]
-    for word in words[1:]:
-        if re.sub(r"\W+", "", word.lower()) != re.sub(r"\W+", "", res[-1].lower()):
-            res.append(word)
-    
-    sentence = " ".join([ word for word in res if re.search(odd_characters, word, flags=re.IGNORECASE) is None ])
-    sentence = re.sub(r'\s+', ' ', sentence)
-
-    #print(f"clean_words: {sentence}")
-    return sentence
+    return unicodedata.normalize('NFC', text.strip())
 
 def get_contractions(songs):
-    contractions = {}
+    vocab = {}
+    for song in songs:
+        sentences = song.split("\n")
+        for sentence in sentences:
+            for word in sentence.split(" "):
+                if "'" in word:
+                    if word.lower() not in vocab:
+                        vocab[word.lower()] = 0
+                    vocab[word.lower()] += 1    
+    return vocab
 
-    all_words = [ word for sentences in songs 
-                     for sentence in sentences 
-                     for word in sentence.split(" ")]
+def get_contractions_dict(contractions):
+    contractions_dict = { k: "" for k in contractions }
 
-    for word in all_words:
-        if "'" in word:
-            if word not in contractions:
-                contractions[word] = 0
-            contractions[word] += 1
-
-    return contractions
-
-def get_contractions_dict(sentences):
-    contractions = get_contractions(sentences)
-    contractions_dict = {}
-
-    for c in list(contractions.keys()):     
-        if (len(c) > 1 and c[-2] == "'" and not c[-1].isalnum()) or c[-1] == "'":
-            contractions_dict[c] = c.replace("'", "s")
-        elif "a'o" in c:
-            contractions_dict[c] = c.replace("a'o", "ado")
-        elif "i'o" in c:
-            contractions_dict[c] = c.replace("i'o", "ido")
-        elif "í'o" in c:
-            contractions_dict[c] = c.replace("í'o", "ído")
-        elif "e'n" in c:
-            contractions_dict[c] = c.replace("e'n", "eron")
-        elif "i'a" in c:
-            contractions_dict[c] = c.replace("i'a", "ida")
-        elif "a'n" in c:
-            contractions_dict[c] = c.replace("a'n", "aron")
-
-    return { **contractions_dict, **additional_contractions }
-
-def clean_contractions(sentence, con_dict):
-    words = sentence.split(" ")
-    return " ".join([ con_dict[word] if word in con_dict else word for word in words ])
-
-def remove_sentences_with_contractions(sentence):
-    if "'" in sentence:
-        print(f"DELETED: {sentence}")
-        return ""
+    contraction_patterns = { "ao'": "ado", "eo'": "edo", "íos'": "idos", "ío'": "ido", "io'": "ido",
+                             "a'o": "ado", "i'o": "ido", "í'o": "ído", "e'n": "eron", "i'a": "ida",
+                             "a'n": "aron", "ías'": "didas", "in'": "ing", "íta'": "da", "íto'": "do", "pa'": "para ",
+                              "p'": "para " }
     
-    return sentence
+    for cont in contractions_dict:
+        for patt in contraction_patterns:
+            if patt in cont:
+                contractions_dict[cont] = cont.replace(patt, contraction_patterns[patt])
 
+        if cont[-1] == "'":
+            contractions_dict[cont] = cont.replace("'", "s")
+
+    return { **contractions_dict, **additional_contractions, **additional_contractions_en }
 
 additional_contractions = {
-    "A'lante,": "Adelante,",
-    "lucí'a": "lúcida",
-    "'lante,": "adelante",
-    "ma'i,": "mami",
-    "culipande'o": "culipandeo",
-    "'esbocar": "desbocar",
-    "mone'a": "monedas",
-    "e'to": "esto",
-    "so'ar": "soñar",
-    "hije'puta": "hija de puta",
-    "picha'era": "pichadera",
-    "A'lante": "adelante",
-    "punta'e": "punta de",
-    "'Ta": "Esta",
-    "'no": "no",
-    "'jefe": "jefe",
-    "buchanan's": "buchanan",
-    "'ñor": "señor",
-    "MC's,": "MC",
-    "millo's": "millonarios",
-    "toas": "todas",
-    "quita'n": "quitaron",
-    "'Pera": "Espera",
-    "'tos": "todos",
-    "ma'i": "mami",
-    "'Inche": "pinche",
-    "'Ta": "Esta",
-    "'ón": "donde",
-    "to'": "todos",
-    "mu'": "muy",
-    "'e": 'de',
-    "vo'a": 'voy a',
-    "'tá": 'está',
-    "to'a": 'toda',
-    "'toy": 'estoy',
-    "'tán": 'están',
-    "to's": 'todos',
-    "to'as": 'todas',
-    "'Toy": 'Estoy',
-    "'Tá": 'Está',
-    "'el": 'del',
-    "To'as": 'Todas',
-    "¿oí'te,": '¿oíste',
-    "'Tán": 'Están',
-    "'onde": 'donde',
-    "'tás": 'estás',
-    "vamo'a": 'vamos a',
-    "Vo'a": 'Voy a',
-    "'taba": 'estaba',
-    "Vamo'a": 'Vamos a',
-    "To'a": 'Toda',
-    "e'toy": 'estoy',
-    "e'ta": 'esta',
-    "de'o": 'dedo',
-    "'Tás": 'Estás',
-    "'tar": 'estar',
-    "'tate": 'estate',
-    "ere'—Tú": 'eres tú',
-    "escondi'as": 'escondidas',
-    "co'quillita": 'cosquillita',
-    "prendí'a": 'prendida',
-    "ha'ta": 'hasta',
-    "di'que": 'disque',
-    "nue'tro": 'nuestro',
-    "'ta": 'esta',
-    "e'te": 'este',
-    "prendi'a": 'prendida',
-    "mi'mo": 'mismo',
-    "E'to": 'Esto',
-    "To's": 'Todos',
-    "to'a,": 'toda,',
-    "cr'eme": 'créeme',
-    "'Toy-'Toy-'Toy": 'Estoy',
-    "supie'n": 'supieron',
-    "vamo'alla,": 'vamos allá',
-    "to'os": 'todos',
-    "gu'ta": 'gusta',
-    "'tén": 'estén',
-    "'apá": 'papá',
-    "Que'l": 'Que él',
-    "¿'tás": '¿estás',
-    "'trás": 'detrás',
-    "escondi'a": 'escondida',
-    "'Taba": 'Estaba',
-    "m'importa": 'me importa',
-    "'esbarato": '',
-    "'tan": 'estan',
-    "pega'ito": 'pegadito',
-    "'tas": 'estas',
-    "e'tá": 'está',
-    "bu'cando": 'buscando',
-    "Ha'ta": 'Hasta',
-    "comi'a": 'comida',
-    "'taban": 'estaban',
-    "no'más": 'nada más',
-    "¿oí'te": '¿oíste',
-    "pelu'os": 'peludos',
-    "Vamono'a": 'Vamonos a',
-    "comprometí'a": 'comprometida',
-    "comprometí'a,": 'comprometida,',
-    "ve'-eh-eh": 'ves',
-    "ve'-eh-eh,": 'ves,',
-    "'Tuve": 'Estuve',
-    "Comi'a": 'Comida',
-    "Aparesi'te": 'Aparesiste',
-    "diji'te": 'dijiste',
-    "'Tábamos": 'Estábamos',
-    "Loco'-loco'-locos": 'locos',
-    "so'aba": 'sobaba',
-    "camara'a!": 'camarada!',
-    "parti'a,": 'partida',
-    "de'de": 'desde',
-    "fundi'a": 'fundida',
-    "u'ted": 'usted',
-    "mete'lo,": 'metelo',
-    "ve'lo": 'velo',
-    "oí'te,": 'oíste',
-    "salie'n": 'salieron',
-    "pal'abrigo": 'para el abrigo',
-    "corre'le": 'correle',
-    "co'quillita,": 'cosquillita',
-    "'Tan": 'Estan',
-    "e'una": 'es una',
-    "de'pués": 'despues',
-    "ca'ile": 'caele',
-    "dese'perado": 'desesperado',
-    "hiju'eputa": 'hijo de puta',
-    "escondí'a": 'escondida',
-    "E'cuchando": 'Escuchando',
-    "tooo's": 'todos',
-    "'tá,": 'está',
-    "queda'n": 'quedan',
-    "'To-'Toy": 'Estoy',
-    "'Tective": 'Detective',
-    "fundie'n": 'fundieron',
-    "'Ca-ca-cause": 'Because',
-    "pue'to": 'puesto',
-    "'té": 'esté',
-    "hace'lo": 'hacedlo',
-    "que'a": 'queda',
-    "pue'en": 'pueden',
-    "To-To-To'a": 'Toda',
-    "¿'ta": '¿esta',
-    'Bacatrane\'",': '',
-    "'tabas": 'estabas',
-    "'Tate": 'Estate',
-    "homb'e!": 'hombre!',
-    "a'í": 'así',
-    "pue'o": 'puedo',
-    'demente\'",': 'dementes',
-    "mojaí'ta,": 'mojadita',
-    "'guama": 'caguama',
-    "tiene'?,": 'tienes?',
-    "cliente'...": 'clientes',
-    "'tando": 'estando',
-    "'Tonces,": 'Entonces',
-    "'ca": 'aca',
-    "'ebajo": 'debajo',
-    "oi'te": 'oiste',
-    "'Ámonos": 'Vámonos',
-    "¡'Ámonos,": '¡Vámonos',
-    "lamo'-Bailamo'-Ba—,": 'Bailamos',
-    "Bailamo'-Bailamo'-Bailamo'-Ba—,": 'Bailamos',
-    "pare'co": 'parezco',
-    "trai'te": 'trajiste',
-    "to'itos": 'todos',
-    "tri'te": 'triste',
-    "actitu'-tu’": 'actitud',
-    "tembla'era": 'tembladera',
-    "fre'cura": 'frescura',
-    "desnu'itos": 'desnudos',
-    "prendí'a,": 'prendida',
-    "rendi'a": 'rendida',
-    "¿oí'te?": '¿oíste?',
-    "calla'íta,": 'calladita',
-    "vestí'a": 'vestida',
-    "corri'ó": 'corrido',
-    "so'amos": 'entonces vamos',
-    'perdío\'?"': 'perdidos?',
-    'hacemo\'?"': 'hacemos',
-    "Para'lante,": 'para adelante',
-    "to'ito": 'todo',
-    "calla'ito": 'calladito',
-    "'l": 'el',
-    "'Taban": 'estaban',
-    'vo\'?",': 'vos?',
-    "vo'?,": 'vos?,',
-    "re'pirá": 'respira',
-    "de'pedí": 'despedí',
-    "pue'a": 'pueda',
-    "compra'te": 'compraste',
-    "to'itas": 'todas',
-    "'Pérate": 'espérate',
-    "vi'ta": 'vista',
-    "resi'tirme": 'resistirme',
-    "mi'mo?": 'mismo',
-    "e'quina": 'esquina',
-    "pega'íto": 'pegadito',
-    "'entro": 'dentro',
-    "encendio's": 'encendidos',
-    'cruzamo\'?"': 'cruzamos?',
-    "callaí'ta": 'callada',
-    "¿oi'te": '¿oíste',
-    "mi'jo!": 'mi hijo!',
-    "mi'jo": 'mi hijo',
-    "mama'te": 'mamaste',
-    '"Adió\'",': 'Adiós,',
-    "to'el": "todo el",
-    "enca'quillo,": "encasquillo,",
-    "mata'n": "matan",
-    "ma'i": "mami",
-    "ex's": "ex",
-    "de'os": "dedos",
-    "foto'l": "foto del",
-    "adi's": "adiós",
-    "m's": "más",
-    "qu'": "qué",
-    "segu'as": "seguías",
-    "s'lo": "solo",
-    "as'y": "así y",
+    "so'amos": "soñamos",
+    "intil": "inútil",
+    "s": "sé",
+    "corazn": "corazón",
+    "podr": "podré", 
+    "amia'": "la mía",
+    "pa'l": "para el",
+    "'tá": "está",
+    "'toy": "estoy",
+    "to'a": "toda",
+    "'tán": "están",
+    "to'as": "todas",
+    "to's": "todos",
+    "pa'ca'": "para acá",
+    "pa'llá": "para allá",
+    "pa'lante": "para adelante",
+    "pa'arriba": "para arriba",
+    "'tate": "estate",
+    "ha'ta": "hasta",
+    "e'toy": "estoy", 
+    "e'ta": "esta", 
+    "de'o": "dedo", 
+    "co'quillita": "cosquillas", 
+    "prendí'a": "prendida", 
+    "'tar": "estar", 
+    "ere'-tú": "eres tú", 
+    "p'arriba": "para arriba", 
+    "e'te": "este", 
+    "e'to": "esto", 
+    "pa'-pa'-pa'-pa'-pa'-pa'-pa'-": "para", 
+    "pa'ti": "para ti", 
+    "comprometí'a": "comprometida", 
+    "ve'-eh-eh": "ver", 
+    "nue'tro": "nuestro", 
+    "'tan": "están", 
+    "oi'te": "oiste", 
+    "pa'ca": "para acá", 
+    "'pa": "para", 
+    "pa'ra": "para", 
+    "pa'dentro": "para adentro", 
+    "m's": "mas", 
+    "'ámonos": "vámonos", 
+    "'taban": "estaban", 
+    "pa'desearte": "para desearte", 
+    "cr'eme": "créeme", 
+    "to'a-ah": "toda", 
+    "pa'encima": "para encima", 
+    "vamo'alla": "vamos alla", 
+    "to'os": "todos", 
+    "gu'ta": "gusta", 
+    "'tén": "estpen", 
+    "'apá": "papá", 
+    "que'l": "que el", 
+    "ma'i": "mami", 
+    "'trás": "atrás", 
+    "'a": "'a", 
+    "m'importa": "me importa", 
+    "'esbarato": "desbarato", 
+    "do-do-do-don't": "don't", 
+    "na'que": "nada que", 
+    "pega'ito": "pegado",
+    "'tas": "estas", 
+    "pa'fuera": "para fuera", 
+    "e'tá": "está", 
+    "bu'cando": "buscando", 
+    "'tando": "estando", 
+    "ponga'rompe": "ponga rompe", 
+    "'la": "la", 
+    "no'más": "nada más", 
+    "to'itos": "todos", 
+    "pelu'os": "peludos", 
+    "vamono'a": "vámonos a", 
+    "'tuve": "estuve", 
+    "aparesi'te": "apareciste", 
+    "diji'te": "dijiste", 
+    "'tábamos": "estábamos", 
+    "mi'jo": "mi hijo", 
+    "loco'-loco'-locos": "locos", 
+    "tie's": "tienes", 
+    "so'aba": "soñaba", 
+    "camara'a": "camarada",  
+    "d's": "d's", 
+    "de'de": "desde", 
+    "pa'roer": "para roer", 
+    "to'el": "todo el", 
+    "u'ted": "usted", 
+    "mete'lo": "metelo", 
+    "ve'lo": "velo", 
+    "pal'abrigo": "para el abrigo", 
+    "tevo'adejar": "te voy a dejar", 
+    "corre'le": "correle", 
+    "enca'quillo": "encasquillo",
+    "vamo'aversi": "vamos a ver si", 
+    "p'al": "para el", 
+    "'perate": "ésperate", 
+    "e'una": "es una", 
+    "so'ar": "soñar", 
+    "de'pués": "después", 
+    "ca'ile": "caele", 
+    "'lin": "lin", 
+    "hace'que": "hace que", 
+    "dese'perado": "desesperado", 
+    "pa'delante": "para adelante", 
+    "allarga't": "lárgate", 
+    "hiju'eputa": "hijo de puta", 
+    "escondí'a": "escondidas", 
+    "e'cuchando": "escuchado",
+    "tooo's": "todos", 
+    "ere'otra": "eres otra", 
+    "'to-'toy": "estoy", 
+    "ex's": "ex's", 
+    "'tective": "detective", 
+    "'esbocar": "desbocar", 
+    "break'esito": "descanso", 
+    "pue'to": "puesto", 
+    "'té": "esté", 
+    "s'an": "se han", 
+    "hace'lo": "hacerlo", 
+    "que'a": "queda", 
+    "pue'en": "pueden", 
+    "to-to-to'a": "toda", 
+    "pa'ó": "pasó", 
+    "'tabas": "estabamos", 
+    "pa'matar": "para matar", 
+    "na'y": "nada y", 
+    "na'ya": "nada ya", 
+    "na'si": "nada si", 
+    "voypa''onde": "voy para donde", 
+    "carro'enla": "carros en la", 
+    "pa'i": "para mi", 
+    "homb'e": "hombre", 
+    "pa'loque": "para lo que", 
+    "a'í": "así", 
+    "pue'o": "puedo", 
+    "de'os": "dedos", 
+    "mojaí'ta": "mojadita", 
+    "'guama": "caguama", 
+    "foto'l": "foto el", 
+    "grande'l": "grande el", 
+    "sie'por": "si es por", 
+    "adi's": "adiós", 
+    "segu'as": "seguías", 
+    "'por": "por", 
+    "as'y": "así y", 
+    "s'lo": "solo", 
     "cacha's": "cachas",
-    "'ón": "dónde",
-    "po'l": "por el",
-    "Shannan's": "Shannan",
-    "'pa": "para",
-    "mc's": "mc",
-    "MC's": "MC",
-    "Mc's": "Mc",
-    "ma'i": "mami",
-    "'esboque": "desboque",
-    "Llega'n": "Llegaron",
-    "'se": "ese",
-    "drage'o": "dragueo",
-    "CD's": "CDs",
-    "No'mas": "Nada mas",
+    "'tos": "estos", 
+    "'ón": "dónde", 
+    "'tonces": "entonces",
+    "'inche": "pinche", 
+    "po'l": "por el", 
+    "'tamo": "estamos",
+    "vamo'a": "vamos a",
+    "'el": "del",
+    "oí'te": "oíste",
+    "'tamos": "estamos",
+    "'tás": "estás",
+    "'taba": "estaba",
+    "pa'que": "para que",
+    "pa'tras": "para atrás",
+    "mi'mo": "mismo",
+    "pa'quererte": "para quererte",
+    "oa'dónde": "para dónde",
+    "'onde": "dónde",
+    "'ta": "esta",
+    "di'que": "disque",
+    "yo'": "[LIMPIA]",
+    "voca'": "[LIMPIA]",
+    "-ema'": "[LIMPIA]",
+    "gua'": "[LIMPIA]",
+    "ya'": "[LIMPIA]",
+    "ey-yo'": "[LIMPIA]",
+    "ra-pa-pa-pa-pai'": "[LIMPIA]",
+    "je'": "[LIMPIA]",
+    "-da'": "[LIMPIA]",
+    "acho'": "[LIMPIA]",
+    "pa'": "para",
+    "to'": "todo",
+    "na'": "nada",
+    "vo'": "voy",
+    "mu'": "muy",
+    "tiguere'": "tigres",
+    "toa'": "todas",
+    "lao'": "lado",
+    "'tamo'": "estamos",
+    "chivirika'": "mujeres coquetas",
+    "verda'": "verdad",
+    "lu'": "luz",
+    "mai'": "mami",
+    "pal'": "para el",
+    "to'-to'-to'-to'": "todo",
+    "uste'": "usted",
+    "sei'": "sed",
+    "pa'tra'": "para atrás",
+    "pa'trá'": "para atrás",
+    "blone'": "puros",
+    "po'": "por",
+    "callaíta": "callada",
+    "bo'": "bobo",
+    "se'": "ser",
+    "t'": "te",
+    "ticke'": "ticket",
+    "chavó'": "chavo",
+    "ta'": "estás",
+    "frontee'": "afrontes",
+    "chabe": "sabes",
+    "timide'": "timidez",
+    "cu'": "culo",
+    "pegaíto'": "pegado",
+    "ca'": "cada",
+    "killin'": "krillin",
+    "verdá": "verdad",
+    "pendejá": "pendeja",
+    "tamo'": "estamos",
+    "feli": "feliz",
+    "nomá'": "nada más",
+    "o'ite": "oiste",
+    "dímele'": "diles",
+    "tos'": "todos",
+    "guta'": "gusta",
+    "bregamo'": "luchamos",
+    "cuernu": "cuernos",
+    "avestru": "avestruz",
+    "'trá'": "atrás",
+    "tá'": "está",
+    "mela'": "mela",
+    "de'pué'": "después",
+    "reggaetone'": "reggaetoneros",
+    "pali'": "pali",
+    "pienna'": "piernas",
+    "depre'": "depresión",
+    "auri'": "auriculares",
+    "a'": "a",
+    "cangri'": "cangri",
+    "pikete": "piquetes",
+    "pode'": "poder",
+    "tranqui'": "tranquilo",
+    "cora'": "corazón",
+    "actitu'": "actitud",
+    "actitú": "actitud",
+    "herma'": "hermano",
+    "o'": "o",
+    "mamaíta'": "mamacita",
+    "vo'a": "voy a",
+    "va-va-va-vamo'": "vamos",
+    "to'a'": "todas",
+    "est'": "esté",
+    "toy'": "estoy",
+    "hach'": "hachís",
+    "trá'": "atrás",
+    "polq'": "porque",
+    "iraquí'": "iraquíes",
+    "ánge": "ángel",
+    "jo-o-oda'": "jodas",
+    "que-pa'": "que para",
+    "'esnu'": "desnudo",
+    "to-toda'": "todas",
+    "ju'to'": "justos",
+    "realida'": "realidad",
+    "photosho'": "photoshop",
+    "per'": "puros",
+    "alante'": "delante",
+    "mykono'": "mykono",
+    "lo'tarjetero'": "los tarjeteros",
+    "teestreses'": "te estreses",
+    "e'tamo'": "estamos",
+    "mi'ma'": "mismas",
+    "hijuepu": "hijo de puta",
+    "madri'": "madrid",
+    "q'": "que",
+    "'mpezamo'": "empezamos",
+    "enamor'": "enamora",
+    "llor'": "llora",
+    "brind'": "brindo",
+    "qu'": "que",
+    "as'": "así",
+    "s'": "sé",
+    "lapi'": "lápiz",
+    "relo'": "reloj",
+    "manife'temo'": "manifestemos",
+    "jue'": "juez",
+    "'e": "de",
+    "'amos": "vamos", 
+    "'e-": "de puta", 
+    "erapa'jugar": "era para jugar", 
+    "podía'enamorar": "podías enamorar", 
+    "pa'elante": "para adelante", 
+    "p'delante": "para adelante", 
+    "'ca": "acá", 
+    "lo'greti": "los greti", 
+    "pa''onde": "para dónde", 
+    "tiene'unculo": "tiene un culo", 
+    "no'-no'-noriel": "Noriel", 
+    "mo'-mo'-mosty": "mosty", 
+    "'ebajo": "debajo", 
+    "pa'gozar": "para gozar", 
+    "lamo'-bailamo'-ba-": "bailamos", 
+    "bailamo'-bailamo'-bailamo'-bai-": "bailamos", 
+    "bailamo'-bailamo'-bailamo'-ba-": "bailamos", 
+    "pa'tras": "para atrás", 
+    "pare'co": "parezco",
+    "trai'te": "trajiste", 
+    "tri'te": "triste", 
+    "pa'recordar": "para recorda", 
+    "pa'cobrar": "para cobrar", 
+    "pa'decir": "para decir", 
+    "pa'gritarte": "para gritarte", 
+    "'cucha": "escucha", 
+    "tembla'era": "tembladera", 
+    "fre'cura": "frescura", 
+    "p'a": "para",
+    "desnu'itos": "desnudos", 
+    "'esboque": "desboque", 
+    "mone'a": "monedas", 
+    "calla'íta": "callada", 
+    "vestí'a": "vestida", 
+    "corri'ó": "corrido", 
+    "p'algo": "para algo", 
+    "party-pa'l": "fiesta para el", 
+    "so'amos": "soñamos", 
+    "maicera'que": "maiceras que", 
+    "para'lante": "para adelante", 
+    "to'ito": "todo", 
+    "calla'ito": "callado", 
+    "'l": "el", 
+    "o'frécome": "[LIMPIAR]", 
+    "re'pirá": "respirá", 
+    "de'pedí": "despedí", 
+    "'fano": "fano", 
+    "'se": "ese", 
+    "pue'a": "pueda", 
+    "compra'te": "compraste", 
+    "m'ijo": "mi hijo", 
+    "to'itas": "todas", 
+    "drage'o": "dragueo", 
+    "'pérate": "espérate", 
+    "vi'ta": "vista", 
+    "resi'tirme": "resistirme", 
+    "e'quina": "esquina", 
+    "to'l": "todo el", 
+    "pega'íto": "pegado",
+    "'entro": "dentro", 
+    "pa'bajo": "para abajo", 
+    "paga'me": "pagarme", 
+    "callaí'ta": "callada", 
+    "no'mas": "nada más", 
     "'lante": "adelante",
-    "'tras": "atrás",
-    "'cer": "hacer",
-    "'migos,": "amigos",
-    "saca'me": "sacarme",
-    "daña'n": "dañan",
-    "Kellogg's": "Kellogs",
-    "coraçao": "corazón"}
+    "'tras": "atrás", 
+    "'cer": "hacer", 
+    "'migos": "amigos", 
+    "'tádemasiadocaliente": "está demasiado caliente", 
+    "reggaeton'a": "reggaeton", 
+    "gana'te": "ganaste", 
+    "mama'te": "mamaste", 
+    "saca'me": "sacarme", 
+    "rasgo'de": "rasgos de", 
+    "pa'ta": "pata",
+    "pam'": "[LIMPIAR]",
+    "la-pa'": "la para",
+    "pa'-pa'-pa'-pa'-pa'-pa'-pa'": "para",
+    "ipa'": "iPad",
+    "yeru'": "Jesús",
+    "que'": "Qué",
+    "sinfo'": "Sinfo",
+    "maidita'": "malditas",
+    "ah-ah-ah-ah-ante'": "Antes",
+    "soado": "soñado"
+}
+
+additional_contractions_en = {
+    "hol'": "hold",
+    "bro'": "bro",
+    "phillie'": "phillie'",
+    "partie'": "parties",
+    "gon'": "going to",
+    "weekene'": "weekends",
+    "leggo'": "leggos",
+    "lil'": "little",
+    "shot'": "shots",
+    "ya'": "you",
+    "motherfucka": "motherfucker",
+    "trapper'": "trapper",
+    "feka'": "fake",
+    "go'": "go",
+    "n'": "and",
+    "lef'": "left",
+    "off'": "off",
+    "lu'-lu'-lunay": "Lunay",
+    "cat'n'bucket": "can't bucket",
+    "'ca-ca-cause": "because", 
+    "o-o-o-only's": "only's",
+    "aingt": "ain't"
+}

@@ -25,15 +25,14 @@ class TextClassifier(nn.Module):
         pooled_output = outputs.last_hidden_state[:, 0, :] 
         pooled_output = self.dropout(pooled_output)
         logits = self.fc(pooled_output)
-        return logits
+        return { "logits": logits }
 
 
 # Multiple instance learning (MIL)
 class MILClassifier(nn.Module):
-    def __init__(self, modelpath, num_labels=2, get_att=False, get_hs=False, dropout=0.05, pooling_type='max', get_att_weights=False):
+    def __init__(self, modelpath, num_labels=2, get_att=False, get_hs=False, dropout=0.05, pooling_type='max'):
         super().__init__()
         self.pooling_type = pooling_type
-        self.get_att_weights = get_att_weights
         self.llm = AutoModel.from_pretrained(modelpath
                                              ,num_labels=num_labels
                                             ,output_attentions=get_att
@@ -74,9 +73,7 @@ class MILClassifier(nn.Module):
             cls_embeddings = self.dropout(weighted_embeddings)
             logits = self.fc(weighted_embeddings) # [batch num_classes]
         
-        if self.get_att_weights:
-            return logits, attn_weights
-        return logits
+        return { "logits": logits, "attn_weights": attn_weights }
     
 
 class AttentionPooling(nn.Module):
