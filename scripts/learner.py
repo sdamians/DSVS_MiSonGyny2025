@@ -161,7 +161,7 @@ class Learner:
 
         if labels is not None:
           all_labels.extend(labels.cpu().numpy())
-          loss = self.criterion(outputs, labels)
+          loss = self.criterion(outputs["logits"], labels)
           eval_loss += loss
 
     # We show the final accuracy for this epoch
