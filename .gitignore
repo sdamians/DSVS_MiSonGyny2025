@@ -178,3 +178,4 @@ datasets/*
 !datasets/*.dvc
 config.env
 *.bkp.py
+submits/
