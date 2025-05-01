@@ -1,0 +1,6 @@
+outs:
+- md5: 930bfbb260e96e3523edb9a64f99b314.dir
+  size: 1055808
+  nfiles: 3
+  hash: md5
+  path: task1_mil_v6_test

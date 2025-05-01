@@ -118,9 +118,10 @@ class Learner:
       print(f"\n\tAverage training loss: {np.sum(epoch_loss)/max_step_t:.4f}")
       print(f"\tTraining epoch {epoch + 1} took: {format_time(time.time() - t0)}")
 
-      print("\n\tValidation step:")
-      self.test(trainset, "trainset metrics:")
-      self.test(valset, "valset metrics:")
+      if valset is not None:
+        print("\n\tValidation step:")
+        self.test(trainset, "trainset metrics:")
+        self.test(valset, "valset metrics:")
 
     print(f"\nTraining complete. It took: {format_time(time.time() - t_gral)}")
 
