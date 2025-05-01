@@ -38,13 +38,14 @@ class Learner:
     t_gral = time.time()
 
     max_step_t = len(trainset)
+    total_training_steps = (len(trainset.dataset) // (trainset.batch_size * gradient_accumulator_size)) * n_epochs
 
     # scheduler = t.optim.lr_scheduler.PolynomialLR(self.optimizer, **self.scheduler_params)
     
     scheduler = get_cosine_schedule_with_warmup(
         self.optimizer,
-        num_warmup_steps=int(0.1 * max_step_t * n_epochs),  # Warmup del 10%
-        num_training_steps=(max_step_t * n_epochs),
+        num_warmup_steps=int(0.1 * total_training_steps),  # Warmup del 10%
+        num_training_steps=(total_training_steps),
         **self.scheduler_params  # Opcional: media onda de coseno (default)
     )
 
