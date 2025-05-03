@@ -71,7 +71,7 @@ def smart_capitalize(text):
     return text[:idx] + text[idx].upper() + text[idx+1:]
 
 def clean_sentences(sentences):
-    pattern = r'as low as \$|as low as|\bBREAK|\bVerse|\bBridge|\bCORO|\bVerso|Todos los Derechos Reservados'
+    pattern = r'as low as \$|as low as|\bBREAK|\bVerse|\bBridge|\bCORO|\bVerso|Todos los Derechos Reservados|Letra de'
 
     sentences = [sentence for sentence in sentences 
                  if not re.search(pattern=pattern, string=sentence, flags=re.IGNORECASE)
