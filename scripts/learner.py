@@ -27,7 +27,8 @@ class Learner:
     if "reduction" in criterion_params:
       self.criterion = nn.CrossEntropyLoss(weight=class_weights, **criterion_params)
     else:
-      criterion_params["alpha"] = t.tensor(criterion_params["alpha"]).to(device)
+      if criterion_params["alpha"] is not None:
+        criterion_params["alpha"] = t.tensor(criterion_params["alpha"]).to(device)
       self.criterion = FocalLoss(**criterion_params)
 
     self.device = device
@@ -166,10 +167,11 @@ class Learner:
           loss = self.criterion(outputs["logits"], labels)
           eval_loss += loss
 
-    # We show the final accuracy for this epoch
+    # We show the final metric scores
+    all_probs = np.array(all_probs)
+    all_preds = np.array(all_preds).flatten()
+    
     if labels is not None:
-      all_probs = np.array(all_probs)
-      all_preds = np.array(all_preds).flatten()
       all_labels = np.array(all_labels).flatten()
 
       metrics = get_metrics(all_labels, all_preds, all_probs[:, 1], promedio='macro')
@@ -179,9 +181,11 @@ class Learner:
         print(f"\t{key}: {metrics[key]}")
       print(f"\tEvalLoss: {eval_loss}")
 
-    print(f"\tValidation took: {format_time(time.time() - t0)}")
+      print(f"\tValidation took: {format_time(time.time() - t0)}")
 
-    return all_preds, all_probs, all_labels, eval_loss
+      return all_preds, all_probs, all_labels, eval_loss
+    
+    return all_preds, all_probs
   
 
 class FocalLoss(nn.Module):
