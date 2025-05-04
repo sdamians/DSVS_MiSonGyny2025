@@ -1,6 +1,6 @@
 outs:
-- md5: fd9b2a3a1295ba6e13e0dcf953eb3808.dir
-  size: 4194793
+- md5: e3ca7c898214521d55c42b25db572c74.dir
+  size: 4170249
   nfiles: 3
   hash: md5
   path: task1_mil_v6
