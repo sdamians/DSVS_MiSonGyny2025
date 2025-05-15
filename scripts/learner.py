@@ -50,6 +50,8 @@ class Learner:
         **self.scheduler_params  # Opcional: media onda de coseno (default)
     )
 
+    scaler = t.amp.GradScaler(device=self.device)
+
     # Training mode.
     self.model.train()
     self.model.zero_grad()
@@ -69,24 +71,24 @@ class Learner:
           if "pad_len" in batch:
             num_verses = batch["pad_len"]
 
-          # Propagation forward in the layers
-          if "pad_len" in batch:
-            outputs = self.model(input_ids, attention_mask=attention_mask, num_verses=num_verses)
-          else:
-            outputs = self.model(input_ids, attention_mask=attention_mask)
+          with t.amp.autocast(device_type=self.device):
 
-          # We calculate the loss of the present minibatch
-          loss = self.criterion(outputs["logits"], labels) #outputs[0]
-          batch_loss += loss.item()
-          pbar.set_postfix({ "loss": loss.item() })
-          pbar.update(1)
+            # Propagation forward in the layers
+            if "pad_len" in batch:
+              outputs = self.model(input_ids, attention_mask=attention_mask, num_verses=num_verses)
+            else:
+              outputs = self.model(input_ids, attention_mask=attention_mask)
+
+            # We calculate the loss of the present minibatch
+            loss = self.criterion(outputs["logits"], labels) #outputs[0]
+            batch_loss += loss.item()
+            pbar.set_postfix({ "loss": loss.item() })
+            pbar.update(1)
 
           # Backpropagation
-          loss.backward()
+          scaler.scale(loss).backward()
+          #loss.backward()
 
-          #Update learning rate each end of epoch
-          scheduler.step()
-          
           # So we can implement gradient accumulator technique
           if (step > 0 and step % gradient_accumulator_size == 0) or (step == max_step_t - 1):
 
@@ -94,7 +96,10 @@ class Learner:
             t.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
 
             # We update the weights and bias according to the optimizer
-            self.optimizer.step()
+            scaler.step(self.optimizer) #self.optimizer.step()
+            scaler.update()
+            #Update learning rate each end of epoch
+            scheduler.step()
 
             # We clean the gradients for the accumulator batch
             self.model.zero_grad()
@@ -121,7 +126,7 @@ class Learner:
 
       if valset is not None:
         print("\n\tValidation step:")
-        self.test(trainset, "trainset metrics:")
+        # self.test(trainset, "trainset metrics:")
         self.test(valset, "valset metrics:")
 
     print(f"\nTraining complete. It took: {format_time(time.time() - t_gral)}")
@@ -179,7 +184,7 @@ class Learner:
       print(msg)
       for key in metrics:
         print(f"\t{key}: {metrics[key]}")
-      print(f"\tEvalLoss: {eval_loss}")
+      print(f"\tEvalLoss: {eval_loss / len(testset):.4f}")
 
       print(f"\tValidation took: {format_time(time.time() - t0)}")
 
