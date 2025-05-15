@@ -50,7 +50,7 @@ class Learner:
         **self.scheduler_params  # Opcional: media onda de coseno (default)
     )
 
-    scaler = t.amp.GradScaler(device=self.device)
+    # scaler = t.amp.GradScaler(device=self.device)
 
     # Training mode.
     self.model.train()
@@ -74,23 +74,23 @@ class Learner:
           if "pad_len" in batch:
             num_verses = batch["pad_len"]
 
-          with t.amp.autocast(device_type=self.device):
+          # with t.amp.autocast(device_type=self.device):
 
-            # Propagation forward in the layers
-            if "pad_len" in batch:
-              outputs = self.model(input_ids, attention_mask=attention_mask, num_verses=num_verses)
-            else:
-              outputs = self.model(input_ids, attention_mask=attention_mask)
+          # Propagation forward in the layers
+          if "pad_len" in batch:
+            outputs = self.model(input_ids, attention_mask=attention_mask, num_verses=num_verses)
+          else:
+            outputs = self.model(input_ids, attention_mask=attention_mask)
 
-            # We calculate the loss of the present minibatch
-            loss = self.criterion(outputs["logits"], labels) #outputs[0]
-            batch_loss += loss.item()
-            pbar.set_postfix({ "loss": loss.item() })
-            pbar.update(1)
+          # We calculate the loss of the present minibatch
+          loss = self.criterion(outputs["logits"], labels) #outputs[0]
+          batch_loss += loss.item()
+          pbar.set_postfix({ "loss": loss.item() })
+          pbar.update(1)
 
           # Backpropagation
-          scaler.scale(loss).backward()
-          #loss.backward()
+          #scaler.scale(loss).backward()
+          loss.backward()
 
           # So we can implement gradient accumulator technique
           if (step > 0 and step % gradient_accumulator_size == 0) or (step == max_step_t - 1):
@@ -99,8 +99,9 @@ class Learner:
             t.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
 
             # We update the weights and bias according to the optimizer
-            scaler.step(self.optimizer) #self.optimizer.step()
-            scaler.update()
+            #scaler.step(self.optimizer) 
+            self.optimizer.step()
+            #scaler.update()
             #Update learning rate each end of epoch
             scheduler.step()
 
