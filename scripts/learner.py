@@ -104,6 +104,9 @@ class Learner:
             # We clean the gradients for the accumulator batch
             self.model.zero_grad()
 
+            current_lr = self.optimizer.param_groups[0]['lr']
+            print(f"New learning rate: {current_lr}")
+
           input_ids.to("cpu")
           attention_mask.to("cpu")
           labels.to("cpu")
