@@ -59,6 +59,9 @@ class Learner:
     for epoch in range(n_epochs):
       t0 = time.time() # We save the start time to see how long it takes.
       epoch_loss = []  # We reset the loss value for each epoch.
+
+      current_lr = self.optimizer.param_groups[0]['lr']
+      print(f"Using learning rate: {current_lr}")
       
       with tqdm(total=len(trainset), desc=f'Epoch {epoch + 1}/{n_epochs}', dynamic_ncols=True) as pbar:
         for step, batch in enumerate(trainset):
@@ -103,9 +106,6 @@ class Learner:
 
             # We clean the gradients for the accumulator batch
             self.model.zero_grad()
-
-            current_lr = self.optimizer.param_groups[0]['lr']
-            print(f"New learning rate: {current_lr}")
 
           input_ids.to("cpu")
           attention_mask.to("cpu")
