@@ -30,7 +30,7 @@ class TextClassifier(nn.Module):
 
 # Multiple instance learning (MIL)
 class MILClassifier(nn.Module):
-    def __init__(self, modelpath, num_labels=2, get_att=False, get_hs=False, dropout=0.05, pooling_type='max'):
+    def __init__(self, modelpath, num_labels=2, get_att=False, get_hs=False, dropout=0.05, pooling_type='max', freeze_model=False):
         super().__init__()
         self.pooling_type = pooling_type
         self.llm = AutoModel.from_pretrained(modelpath
@@ -43,6 +43,12 @@ class MILClassifier(nn.Module):
 
         self.dropout = nn.Dropout(dropout)
         self.fc = nn.Linear(self.llm.config.hidden_size, num_labels)
+
+        if freeze_model:
+            for i in range(7):
+                for name, param in self.model.named_parameters():
+                    if f".{i}." in name:
+                        param.requires_grad = False
 
     def forward(self, input_ids, attention_mask, num_verses):
         B, V, S = input_ids.shape # [batch d_verse seq_len
