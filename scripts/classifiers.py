@@ -46,7 +46,7 @@ class MILClassifier(nn.Module):
 
         if freeze_model:
             for i in range(7):
-                for name, param in self.model.named_parameters():
+                for name, param in self.llm.named_parameters():
                     if f".{i}." in name:
                         param.requires_grad = False
 
